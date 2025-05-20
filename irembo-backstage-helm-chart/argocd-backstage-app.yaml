@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/1moses1/irembo-backstage-helm-chart.git
     targetRevision: HEAD
-    path: .
+    path: irembo-backstage-helm-chart   # 🔥 FIXED this from "." to subdirectory name
     helm:
       valueFiles:
         - values.yaml
