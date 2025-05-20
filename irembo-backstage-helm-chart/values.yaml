@@ -1,0 +1,94 @@
+# Default values for backstage helm chart
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: spotify/backstage
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 7007
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: backstage.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Node selector, tolerations, and affinity settings
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Environment variables for Backstage
+env:
+  NODE_ENV: production
+  BACKSTAGE_BACKEND_LOG_LEVEL: info
+
+# Backstage configuration
+backstage:
+  appConfig:
+    app:
+      title: Backstage
+      baseUrl: http://localhost:7007
+    backend:
+      baseUrl: http://localhost:7007
+      listen:
+        port: 7007
+      database:
+        client: pg
+        connection:
+          host: '{{ .Release.Name }}-postgresql'
+          port: 5432
+          user: backstage
+          password: '${POSTGRES_PASSWORD}'
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    username: backstage
+    password: backstage123
+    database: backstage
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+  
+# Feature flags for conditional usage
+features:
+  enablePostgres: true
+
+# Hook settings
+hooks:
+  preInstall:
+    enabled: true
+  postInstall: 
+    enabled: true
+  preUpgrade:
+    enabled: true
+  postUpgrade:
+    enabled: true
+  preRollback:
+    enabled: true
+  postRollback:
+    enabled: true

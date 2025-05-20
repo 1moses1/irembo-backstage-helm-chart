@@ -1,0 +1,95 @@
+name: Sign and Publish Helm Chart
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger only when a semantic version tag is pushed (e.g., v1.0.0)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Install GPG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg
+
+      - name: Configure Helm repo directory
+        run: mkdir -p ./helm-repo
+
+# -------------------------------
+# Signing step temporarily disabled:
+#      - name: Package and Sign Helm chart
+#        env:
+#          GPG_TTY: $(tty)
+#        run: |
+#          helm package . \
+#            --destination ./helm-repo \
+#            --sign \
+#            --key "$GPG_KEY_ID" \
+#            --keyring ~/.gnupg/secring.gpg
+# -------------------------------
+
+      - name: Extract chart version from Git tag
+        id: version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/}
+          echo "TAG_VERSION=$TAG_VERSION"
+          echo "CHART_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+
+      - name: Update chart version
+        run: |
+          yq eval ".version = \"$CHART_VERSION\"" -i Chart.yaml
+          echo "Chart.yaml version updated to $CHART_VERSION"
+          cat Chart.yaml
+
+      - name: Package Helm chart (without signing)
+        run: |
+          echo "Packaging Helm chart without GPG signing..."
+          helm package . --version "$CHART_VERSION" --destination ./helm-repo
+
+          helm repo index ./helm-repo
+          echo "Helm repository index updated."
+
+          echo "Contents of ./helm-repo after packaging and indexing:"
+          ls -la ./helm-repo/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Push Helm Chart to Registry
+        run: |
+          CHART_PACKAGE=$(ls -t ./helm-repo/backstage-*.tgz | head -n 1)
+
+          if [ -z "$CHART_PACKAGE" ]; then
+            echo "Error: No Helm chart package (.tgz) found in ./helm-repo/."
+            exit 1
+          fi
+
+          echo "Pushing Helm chart package: $CHART_PACKAGE"
+          helm push "$CHART_PACKAGE" oci://ghcr.io/${{ github.repository_owner }}/helm-charts
+          echo "Helm chart pushed to GitHub Container Registry."
+
+      - name: Upload Helm repo as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart-repo
+          path: ./helm-repo
