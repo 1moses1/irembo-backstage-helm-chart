@@ -92,7 +92,3 @@ hooks:
     enabled: true
   postRollback:
     enabled: true
-
-# Migration job image for hooks (used by pre-install job)
-migrationJob:
-  image: bitnami/postgresql:15.5.0

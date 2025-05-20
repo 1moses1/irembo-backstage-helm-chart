@@ -17,7 +17,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: cache-clear
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: busybox:latest
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
           - |

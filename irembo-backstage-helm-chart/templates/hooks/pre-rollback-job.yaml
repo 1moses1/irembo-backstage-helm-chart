@@ -17,7 +17,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: snapshot-db
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: busybox:latest
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
           - |
