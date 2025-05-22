@@ -100,3 +100,10 @@ hooks:
     enabled: false
   postRollback:
     enabled: false
+    
+# Probes toggles
+probes:
+  liveness:
+    enabled: true
+  readiness:
+    enabled: true
