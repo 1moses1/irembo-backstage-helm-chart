@@ -1,20 +1,20 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backstage101
+  name: backstage
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/1moses1/irembo-backstage-helm-chart.git
     targetRevision: HEAD
-    path: irembo-backstage-helm-chart   # 🔥 FIXED this from "." to subdirectory name
+    path: backstage-helm-chart   # 🔥 FIXED this from "." to subdirectory name
     helm:
       valueFiles:
         - values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: irembo101
+    namespace: irembo
   syncPolicy:
     automated:
       prune: true
