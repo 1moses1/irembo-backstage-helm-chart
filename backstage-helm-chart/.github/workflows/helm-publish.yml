@@ -1,13 +1,8 @@
 name: Sign and Publish Helm Chart
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'  # Trigger only when a semantic version tag is pushed (e.g., v1.0.0)
-
-jobs:
-  publish:
-    runs-on: ubuntu-latest
+  release:
+    types: [published]
 
     steps:
       - name: Checkout
