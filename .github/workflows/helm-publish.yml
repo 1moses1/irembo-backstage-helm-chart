@@ -46,13 +46,13 @@ jobs:
 
       - name: Update chart version
         run: |
-          yq eval ".version = \"$CHART_VERSION\"" -i Chart.yaml
+          yq eval ".version = \"$CHART_VERSION\"" -i backstage-helm-chart/Chart.yaml
           echo "Chart.yaml version updated to $CHART_VERSION"
-          cat Chart.yaml
+          cat backstage-helm-chart/Chart.yaml
 
       - name: Package Helm chart (without signing)
         run: |
-          helm package . --version "$CHART_VERSION" --destination ./helm-repo
+          helm package backstage-helm-chart --version "$CHART_VERSION" --destination ./helm-repo
           helm repo index ./helm-repo
           ls -la ./helm-repo/
 
