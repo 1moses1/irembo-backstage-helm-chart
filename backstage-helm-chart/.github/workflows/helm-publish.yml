@@ -1,6 +1,7 @@
 name: Sign and Publish Helm Chart
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
