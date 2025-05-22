@@ -24,18 +24,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gnupg
 
+      - name: Import GPG private key
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_PK: ${{ secrets.GPG_PK }}
+        run: |
+          echo "$GPG_PK" | base64 -d | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --import
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d'/' -f2)
+          echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
+
       - name: Configure Helm repo directory
         run: mkdir -p ./helm-repo
-
-      # - name: Package and Sign Helm chart
-      #   env:
-      #     GPG_TTY: $(tty)
-      #   run: |
-      #     helm package . \
-      #       --destination ./helm-repo \
-      #       --sign \
-      #       --key "$GPG_KEY_ID" \
-      #       --keyring ~/.gnupg/secring.gpg
 
       - name: Extract chart version from Git tag
         id: version
@@ -50,11 +49,16 @@ jobs:
           echo "Chart.yaml version updated to $CHART_VERSION"
           cat backstage-helm-chart/Chart.yaml
 
-      - name: Package Helm chart (without signing)
+      - name: Package and Sign Helm chart
+        env:
+          GPG_TTY: $(tty)
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          helm package backstage-helm-chart --version "$CHART_VERSION" --destination ./helm-repo
+          helm package backstage-helm-chart \
+            --destination ./helm-repo \
+            --sign \
+            --key "$GPG_KEY_ID"
           helm repo index ./helm-repo
-          ls -la ./helm-repo/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -66,7 +70,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Push Helm Chart to Registry
+      - name: Push Helm Chart to OCI Registry (ArtifactHub-compatible)
         run: |
           CHART_PACKAGE=$(ls -t ./helm-repo/backstage-*.tgz | head -n 1)
           if [ -z "$CHART_PACKAGE" ]; then
