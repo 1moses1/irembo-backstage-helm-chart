@@ -66,6 +66,9 @@ backstage:
           port: 5432
           user: backstage
           password: '${POSTGRES_PASSWORD}'
+    auth:
+      environment: development
+      providers: {}        
 
 # PostgreSQL subchart configuration
 postgresql:
