@@ -104,6 +104,6 @@ hooks:
 # Probes toggles
 probes:
   liveness:
-    enabled: true
+    enabled: false
   readiness:
-    enabled: true
+    enabled: false
