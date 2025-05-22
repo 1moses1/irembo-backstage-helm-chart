@@ -52,6 +52,9 @@ env:
 # Backstage configuration
 backstage:
   appConfig:
+    auth:
+      environment: development
+      providers: {}     
     app:
       title: Backstage
       baseUrl: http://localhost:7007
@@ -65,10 +68,7 @@ backstage:
           host: '{{ printf "%s-postgresql" .Release.Name | quote }}'
           port: 5432
           user: backstage
-          password: '${POSTGRES_PASSWORD}'
-    auth:
-      environment: development
-      providers: {}        
+          password: '${POSTGRES_PASSWORD}'   
 
 # PostgreSQL subchart configuration
 postgresql:
