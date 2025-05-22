@@ -38,6 +38,8 @@ spec:
               value: "5432"
             - name: POSTGRES_DATABASE
               value: {{ .Values.postgresql.auth.database }}
+
+          {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             httpGet:
               path: /api/health
@@ -46,6 +48,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+          {{- end }}
+
+          {{- if .Values.probes.readiness.enabled }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -54,6 +59,8 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          {{- end }}
+
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
