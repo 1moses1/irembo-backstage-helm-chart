@@ -30,7 +30,7 @@ helm install backstage ./backstage
 | Parameter                           | Description                                 | Default                                                 |
 |-------------------------------------|---------------------------------------------|---------------------------------------------------------|
 | `replicaCount`                      | Number of replicas for the deployment       | `1`                                                     |
-| `image.repository`                  | Backstage image repository                  | `spotify/backstage`                                    |
+| `image.repository`                  | Backstage image repository                  | `roadiehq/community-backstage-image`                                    |
 | `image.tag`                         | Backstage image tag                         | `latest`                                               |
 | `image.pullPolicy`                  | Image pull policy                           | `IfNotPresent`                                         |
 | `service.type`                      | Kubernetes service type                     | `ClusterIP`                                            |
