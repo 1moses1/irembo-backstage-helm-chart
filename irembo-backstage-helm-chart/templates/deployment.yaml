@@ -14,6 +14,7 @@ spec:
       labels:
         {{- include "backstage.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "backstage.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -37,6 +38,22 @@ spec:
               value: "5432"
             - name: POSTGRES_DATABASE
               value: {{ .Values.postgresql.auth.database }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 7007
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 7007
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

@@ -3,7 +3,7 @@ replicaCount: 1
 
 # Image configuration
 image:
-  repository: ghcr.io/backstage/backstage
+  repository: roadiehq/community-backstage-image
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -38,6 +38,11 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+serviceAccount:
+  create: true
+  name: ""  # Use default generated name via template
+
 
 # Environment variables for Backstage
 env:
@@ -81,14 +86,14 @@ features:
 # Hook settings
 hooks:
   preInstall:
-    enabled: true
+    enabled: false
   postInstall: 
-    enabled: true
+    enabled: false
   preUpgrade:
-    enabled: true
+    enabled: false
   postUpgrade:
-    enabled: true
+    enabled: false
   preRollback:
-    enabled: true
+    enabled: false
   postRollback:
-    enabled: true
+    enabled: false
