@@ -58,13 +58,13 @@ echo "Waiting for Backstage deployment to be created..."
 sleep 30
 
 # Start port forwarding for Backstage
-kubectl port-forward -n irembo svc/backstage 7007:80 &
+kubectl port-forward -n irembo svc/backstage 7000:80 &
 echo "Backstage will be available at http://localhost:7007"
 
 echo "Setup complete!"
 echo ""
 echo "Access information:"
 echo "- ArgoCD: https://localhost:8083 (admin / $ARGOCD_PASSWORD)"
-echo "- Backstage: http://localhost:7007"
+echo "- Backstage: http://localhost:7000"
 echo ""
 echo "To stop port forwarding: pkill -f 'kubectl port-forward'"
