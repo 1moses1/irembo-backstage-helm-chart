@@ -32,6 +32,9 @@ jobs:
       - name: Authenticate to GHCR
         run: echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ghcr.io -u 1moses1 --password-stdin
 
+      - name: Authenticate Cosign to GHCR via Docker
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u 1moses1 --password-stdin
+
       - name: Update Chart Version from Tag
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
