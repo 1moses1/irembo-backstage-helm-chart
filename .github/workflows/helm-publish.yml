@@ -29,8 +29,8 @@ jobs:
       - name: Set up Cosign
         uses: sigstore/cosign-installer@v3.5.0
 
-      - name: Authenticate to GHCR (or other OCI registry)
-        run: echo "${{ secrets.CR_PAT }}" | helm registry login ghcr.io -u 1moses1 --password-stdin
+      - name: Authenticate to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ghcr.io -u 1moses1 --password-stdin
 
       - name: Update Chart Version from Tag
         run: |
