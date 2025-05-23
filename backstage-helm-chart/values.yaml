@@ -54,11 +54,11 @@ backstage:
   appConfig:
     app:
       title: Backstage
-      baseUrl: http://localhost:7007
+      baseUrl: http://localhost:7000
     backend:
-      baseUrl: http://localhost:7007
+      baseUrl: http://localhost:7000
       listen:
-        port: 7007
+        port: 7000
       database:
         client: pg
         connection:
