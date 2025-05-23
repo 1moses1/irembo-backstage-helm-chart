@@ -53,11 +53,15 @@ jobs:
         env:
           GPG_TTY: $(tty)
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ env.GPG_KEY_ID }}
         run: |
+          export GNUPGHOME="$(mktemp -d)"
+          echo "$GPG_PK" | base64 -d | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --import
           helm package backstage-helm-chart \
             --destination ./helm-repo \
             --sign \
-            --key "$GPG_KEY_ID"
+            --key "$GPG_KEY_ID" \
+            --keyring "$GNUPGHOME/pubring.kbx"
           helm repo index ./helm-repo
 
       - name: Set up Docker Buildx
