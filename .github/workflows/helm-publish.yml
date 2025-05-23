@@ -1,4 +1,4 @@
-name: Release Helm Chart with GPG Signing and OCI Push
+name: Release Helm Chart with Cosign (OCI)
 
 on:
   workflow_dispatch:
@@ -10,12 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write  # Required for keyless signing with OIDC
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Configure Git Identity
         run: |
@@ -27,21 +26,11 @@ jobs:
         with:
           version: v3.14.3
 
-      - name: Import GPG Public Key
-        run: echo "$GPG_PK" | gpg --batch --import
-        env:
-          GPG_PK: ${{ secrets.GPG_PK }}
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3.5.0
 
-      - name: Prepare GPG Private Keyring for Signing
-        run: |
-          mkdir -p .cr-gpg
-          echo "$SECRING_BASE64" | base64 -d > .cr-gpg/secring.gpg
-          echo "$GPG_PASSPHRASE" > .cr-gpg/passphrase
-          echo "CR_KEYRING=$(pwd)/.cr-gpg/secring.gpg" >> $GITHUB_ENV
-          echo "CR_PASSPHRASE_FILE=$(pwd)/.cr-gpg/passphrase" >> $GITHUB_ENV
-        env:
-          SECRING_BASE64: ${{ secrets.SECRING_BASE64 }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Authenticate to GHCR (or other OCI registry)
+        run: echo "${{ secrets.CR_PAT }}" | helm registry login ghcr.io -u 1moses1 --password-stdin
 
       - name: Update Chart Version from Tag
         run: |
@@ -49,29 +38,12 @@ jobs:
           yq eval ".version = \"$VERSION\"" -i backstage-helm-chart/Chart.yaml
           echo "Updated Chart.yaml version to $VERSION"
 
-      - name: Package Helm Chart (unsigned for now)
+      - name: Save and Push to OCI Registry
         run: |
-          mkdir -p .cr-release-packages
-          helm dependency update backstage-helm-chart || true
-          helm package backstage-helm-chart \
-            --destination .cr-release-packages
-          # --sign \
-          # --key "$CR_KEY" \
-          # --keyring "$CR_KEYRING"
-        env:
-          CR_KEY: ${{ secrets.CR_KEY }}
+          helm package backstage-helm-chart
+          helm push backstage-*.tgz oci://ghcr.io/1moses1/charts
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.7.0
-        env:
-          CR_TOKEN: ${{ secrets.PAT }}
-          CR_KEY: ${{ secrets.CR_KEY }}
-          CR_SIGN: false
-          CR_SKIP_EXISTING: false
-          CR_MARK_AS_LATEST: true
-
-      - name: Upload Helm Chart Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-chart-signed
-          path: .cr-release-packages/backstage-*.tgz
+      - name: Cosign Sign OCI Helm Chart
+        run: |
+          CHART_REF="ghcr.io/1moses1/charts/backstage:${GITHUB_REF#refs/tags/}"
+          cosign sign --yes $CHART_REF
