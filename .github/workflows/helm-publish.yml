@@ -1,4 +1,4 @@
-name: Sign and Publish Helm Chart
+name: Release Helm Chart with GPG Signing and OCI Push
 
 on:
   workflow_dispatch:
@@ -6,85 +6,72 @@ on:
     types: [published]
 
 jobs:
-  publish:
+  release-chart:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
+      - name: Configure Git Identity
+        run: |
+          git config user.name "1moses1"
+          git config user.email "iradukundam47@gmail.com"
+
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.3.0
         with:
-          version: 'v3.12.0'
+          version: v3.14.3
 
-      - name: Install GPG
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gnupg
-
-      - name: Import GPG private key
+      - name: Import GPG Public Key
+        run: echo "$GPG_PK" | gpg --batch --import
         env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_PK: ${{ secrets.GPG_PK }}
+
+      - name: Prepare GPG Private Keyring for Signing
         run: |
-          echo "$GPG_PK" | base64 -d | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --import
-          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep '^sec' | awk '{print $2}' | head -n1 | cut -d'/' -f2 | tr -d '\r\n')
-          echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
-
-      - name: Configure Helm repo directory
-        run: mkdir -p ./helm-repo
-
-      - name: Extract chart version from Git tag
-        id: version
-        run: |
-          TAG_VERSION=${GITHUB_REF#refs/tags/}
-          echo "TAG_VERSION=$TAG_VERSION"
-          echo "CHART_VERSION=$TAG_VERSION" >> $GITHUB_ENV
-
-      - name: Update chart version
-        run: |
-          yq eval ".version = \"$CHART_VERSION\"" -i backstage-helm-chart/Chart.yaml
-          echo "Chart.yaml version updated to $CHART_VERSION"
-          cat backstage-helm-chart/Chart.yaml
-
-      - name: Package and Sign Helm chart
+          mkdir -p .cr-gpg
+          echo "$SECRING_BASE64" | base64 -d > .cr-gpg/secring.gpg
+          echo "$GPG_PASSPHRASE" > .cr-gpg/passphrase
+          echo "CR_KEYRING=$(pwd)/.cr-gpg/secring.gpg" >> $GITHUB_ENV
+          echo "CR_PASSPHRASE_FILE=$(pwd)/.cr-gpg/passphrase" >> $GITHUB_ENV
         env:
-          GPG_TTY: $(tty)
+          SECRING_BASE64: ${{ secrets.SECRING_BASE64 }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          GPG_KEY_ID: ${{ env.GPG_KEY_ID }}
+
+      - name: Update Chart Version from Tag
         run: |
-          export GNUPGHOME="$(mktemp -d)"
-          echo "$GPG_PK" | base64 -d | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --import
+          VERSION=${GITHUB_REF#refs/tags/}
+          yq eval ".version = \"$VERSION\"" -i backstage-helm-chart/Chart.yaml
+          echo "Updated Chart.yaml version to $VERSION"
+
+      - name: Package Helm Chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm dependency update backstage-helm-chart || true
           helm package backstage-helm-chart \
-            --destination ./helm-repo \
+            --destination .cr-release-packages \
             --sign \
-            --key "$GPG_KEY_ID" \
-            --keyring "$GNUPGHOME/pubring.kbx"
-          helm repo index ./helm-repo
+            --key "$CR_KEY" \
+            --keyring "$CR_KEYRING"
+        env:
+          CR_KEY: ${{ secrets.CR_KEY }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: ${{ secrets.PAT }}
+          CR_KEY: ${{ secrets.CR_KEY }}
+          CR_SIGN: true
+          CR_SKIP_EXISTING: false
+          CR_MARK_AS_LATEST: true
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
-
-      - name: Push Helm Chart to OCI Registry (ArtifactHub-compatible)
-        run: |
-          CHART_PACKAGE=$(ls -t ./helm-repo/backstage-*.tgz | head -n 1)
-          if [ -z "$CHART_PACKAGE" ]; then
-            echo "Error: No Helm chart package (.tgz) found in ./helm-repo/."
-            exit 1
-          fi
-          helm push "$CHART_PACKAGE" oci://ghcr.io/${{ github.repository_owner }}/helm-charts
-
-      - name: Upload Helm repo as artifact
+      - name: Upload Helm Chart Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: helm-chart-repo
-          path: ./helm-repo
+          name: helm-chart-signed
+          path: .cr-release-packages
