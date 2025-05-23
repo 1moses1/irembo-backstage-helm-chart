@@ -10,7 +10,7 @@ image:
 # Service configuration
 service:
   type: ClusterIP
-  port: 80
+  port: 7000
   targetPort: 7000
 
 # Ingress configuration
