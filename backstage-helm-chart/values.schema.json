@@ -6,25 +6,17 @@
   "properties": {
     "replicaCount": {
       "type": "integer",
-      "minimum": 1,
-      "description": "Number of replicas for the Backstage deployment"
+      "minimum": 1
     },
     "image": {
       "type": "object",
       "required": ["repository", "tag"],
       "properties": {
-        "repository": {
-          "type": "string",
-          "description": "Docker image repository"
-        },
-        "tag": {
-          "type": "string",
-          "description": "Docker image tag"
-        },
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"],
-          "description": "Kubernetes image pull policy"
+          "enum": ["Always", "IfNotPresent", "Never"]
         }
       }
     },
@@ -34,44 +26,148 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
-          "description": "Kubernetes service type"
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
         },
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535,
-          "description": "Service port"
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "host": { "type": "string" },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": { "type": "string" },
+                    "pathType": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
         },
-        "targetPort": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535,
-          "description": "Target port on the container"
+        "tls": { "type": "array" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "nodeSelector": { "type": "object" },
+    "tolerations": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "affinity": { "type": "object" },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "backstage": {
+      "type": "object",
+      "properties": {
+        "appConfig": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "baseUrl": { "type": "string" }
+              }
+            },
+            "backend": {
+              "type": "object",
+              "properties": {
+                "baseUrl": { "type": "string" },
+                "listen": {
+                  "type": "object",
+                  "properties": {
+                    "port": { "type": "integer" }
+                  }
+                },
+                "database": {
+                  "type": "object",
+                  "properties": {
+                    "client": { "type": "string" },
+                    "connection": {
+                      "type": "object",
+                      "properties": {
+                        "host": { "type": "string" },
+                        "port": { "type": "integer" },
+                        "user": { "type": "string" },
+                        "password": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "auth": {
+              "type": "object",
+              "properties": {
+                "environment": { "type": "string" },
+                "providers": { "type": "object" }
+              }
+            }
+          }
         }
       }
     },
     "postgresql": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable PostgreSQL subchart"
-        },
+        "enabled": { "type": "boolean" },
         "auth": {
           "type": "object",
           "properties": {
-            "username": {
-              "type": "string",
-              "description": "PostgreSQL username"
-            },
-            "password": {
-              "type": "string",
-              "description": "PostgreSQL password"
-            },
-            "database": {
-              "type": "string",
-              "description": "PostgreSQL database name"
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "database": { "type": "string" }
+          }
+        },
+        "primary": {
+          "type": "object",
+          "properties": {
+            "persistence": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "size": { "type": "string" }
+              }
             }
           }
         }
@@ -80,10 +176,7 @@
     "features": {
       "type": "object",
       "properties": {
-        "enablePostgres": {
-          "type": "boolean",
-          "description": "Enable PostgreSQL features"
-        }
+        "enablePostgres": { "type": "boolean" }
       }
     },
     "hooks": {
@@ -91,57 +184,40 @@
       "properties": {
         "preInstall": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable pre-install hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
         },
         "postInstall": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable post-install hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
         },
         "preUpgrade": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable pre-upgrade hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
         },
         "postUpgrade": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable post-upgrade hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
         },
         "preRollback": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable pre-rollback hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
         },
         "postRollback": {
           "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable post-rollback hooks"
-            }
-          }
+          "properties": { "enabled": { "type": "boolean" } }
+        }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "properties": {
+        "liveness": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "readiness": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
         }
       }
     }
