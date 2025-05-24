@@ -41,7 +41,7 @@ fi
 
 # Step 6: Apply the ArgoCD application
 echo "Applying ArgoCD application for Backstage..."
-kubectl apply -f irembo-backstage-helm-chart/argocd-backstage-app.yaml
+kubectl apply -f ~/irembo-backstage-helm-chart/backstage-helm-chart/argocd-backstage-app.yaml
 
 # Step 7: Set up port forwarding for services
 echo "Setting up port forwarding..."
@@ -50,7 +50,7 @@ pkill -f "kubectl port-forward -n argocd" || true
 pkill -f "kubectl port-forward -n irembo" || true
 
 # Start port forwarding for ArgoCD
-kubectl port-forward -n argocd svc/argocd-server 8083:443 &
+nohup kubectl port-forward -n argocd svc/argocd-server 8083:443 > ~/argocd-port-forward.log 2>&1 &
 echo "ArgoCD is available at https://localhost:8083"
 
 # Wait a moment for the Backstage deployment to be created by ArgoCD
@@ -58,8 +58,8 @@ echo "Waiting for Backstage deployment to be created..."
 sleep 30
 
 # Start port forwarding for Backstage
-kubectl port-forward -n irembo svc/backstage 7000:80 &
-echo "Backstage will be available at http://localhost:7007"
+nohup kubectl port-forward -n irembo svc/backstage 7000:7000 > ~/backstage-port.log 2>&1 &
+echo "Backstage will be available at http://localhost:7000"
 
 echo "Setup complete!"
 echo ""
