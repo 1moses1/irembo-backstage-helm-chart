@@ -9,18 +9,18 @@ echo "Testing Helm Chart Schema Validation..."
 cat << EOF > valid-values.yaml
 replicaCount: 2
 image:
-  repository: spotify/backstage
+  repository: roadiehq/community-backstage-image
   tag: latest
   pullPolicy: Always
 service:
   type: ClusterIP
-  port: 80
-  targetPort: 7007
+  port: 7000
+  targetPort: 7000
 postgresql:
   enabled: true
   auth:
     username: backstage
-    password: securepassword
+    password: backstage
     database: backstage
 EOF
 
@@ -37,14 +37,14 @@ EOF
 
 # Test with valid values
 echo -e "\n\033[1mTesting with valid values file:\033[0m"
-echo "Running: helm lint irembo-backstage-helm-chart --values valid-values.yaml"
-helm lint irembo-backstage-helm-chart --values valid-values.yaml
+echo "Running: helm lint ~/irembo-backstage-helm-chart/backstage-helm-chart --values valid-values.yaml"
+helm lint ~/irembo-backstage-helm-chart/backstage-helm-chart --values valid-values.yaml
 echo -e "\033[32mValid values file passed the schema validation!\033[0m"
 
 # Test with invalid values
 echo -e "\n\033[1mTesting with invalid values file:\033[0m"
-echo "Running: helm lint irembo-backstage-helm-chart --values invalid-values.yaml"
-if ! helm lint irembo-backstage-helm-chart --values invalid-values.yaml; then
+echo "Running: helm lint ~/irembo-backstage-helm-chart/backstage-helm-chart --values invalid-values.yaml"
+if ! helm lint ~/irembo-backstage-helm-chart/backstage-helm-chart --values invalid-values.yaml; then
   echo -e "\033[32mSuccess! Invalid values file failed validation as expected.\033[0m"
 else
   echo -e "\033[31mError: Invalid values file passed validation when it should have failed.\033[0m"
@@ -53,7 +53,7 @@ fi
 # Install with schema validation
 echo -e "\n\033[1mDemonstrating schema validation during install:\033[0m"
 echo "Attempting to install with invalid values..."
-if ! helm install test-backstage irembo-backstage-helm-chart --values invalid-values.yaml --namespace irembo; then
+if ! helm install test-backstage ~/irembo-backstage-helm-chart/backstage-helm-chart --values invalid-values.yaml --namespace irembo; then
   echo -e "\033[32mSuccess! Install failed due to schema validation as expected.\033[0m"
 else
   echo -e "\033[31mError: Install succeeded with invalid values.\033[0m"
