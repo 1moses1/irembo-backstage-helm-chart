@@ -75,7 +75,7 @@ postgresql:
   enabled: true
   auth:
     username: backstage
-    password: backstage123
+    password: backstage
     database: backstage
   primary:
     persistence:
