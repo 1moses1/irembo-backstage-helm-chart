@@ -98,3 +98,23 @@ jobs:
             --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/helm-publish.yml@${{ github.ref }}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "$CHART_OCI_REF_WITH_DIGEST"
+
+      - name: Notify ArtifactHub to Reindex Repository
+        if: ${{ success() }}
+        run: |
+          curl -X POST https://artifacthub.io/api/v1/repositories/track \
+            -H "Authorization: Bearer ${{ secrets.ARTIFACTHUB_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "url": "oci://ghcr.io/${{ github.repository_owner }}/charts",
+              "kind": 0,
+              "repository_name": "irembo-backstage-helm"
+            }'
+
+      - name: Output ArtifactHub Chart Link
+        if: ${{ success() }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "📦 Chart successfully published!"
+          echo "🔗 View it here: https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage"
+
