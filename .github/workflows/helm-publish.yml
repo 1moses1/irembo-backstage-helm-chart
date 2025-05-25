@@ -36,12 +36,10 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq gnupg2 curl coreutils pinentry-curses 
-          
           echo "Installing yq ${{ env.YQ_VERSION }}..."
           sudo wget https://github.com/mikefarah/yq/releases/download/${{ env.YQ_VERSION }}/yq_linux_amd64 -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
           echo "yq version: $(yq --version)"
-
           ORAS_VERSION="1.1.0"
           curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
           tar -zxvf "oras_${ORAS_VERSION}_linux_amd64.tar.gz"
@@ -61,31 +59,20 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
           echo "Updated Chart.yaml version to $VERSION"
-          echo "Contents of $CHART_DIR/Chart.yaml after update:"
           cat "$CHART_DIR/Chart.yaml"
 
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
         run: |
-          # 1. Create GNUPGHOME
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
-          echo "Using GNUPGHOME for setup: $GNUPGHOME"
-          
-          # 2. Set GPG_TTY (important for some GPG operations/pinentry)
           export GPG_TTY=$(tty)
-          echo "GPG_TTY for setup: $GPG_TTY"
-
-          # 3. Create gpg.conf for non-interactive use
           echo "Creating $GNUPGHOME/gpg.conf..."
           cat <<EOF > "$GNUPGHOME/gpg.conf"
           batch
           no-tty
           pinentry-mode loopback
           EOF
-          cat "$GNUPGHOME/gpg.conf" # Verify content
-
-          # 4. Create gpg-agent.conf for non-interactive use
           echo "Creating $GNUPGHOME/gpg-agent.conf..."
           cat <<EOF > "$GNUPGHOME/gpg-agent.conf"
           pinentry-program /usr/bin/pinentry-curses
@@ -93,122 +80,30 @@ jobs:
           default-cache-ttl 600
           max-cache-ttl 7200
           EOF
-          cat "$GNUPGHOME/gpg-agent.conf" # Verify content
-          # Ensure correct permissions for gpg-agent.conf if needed (usually not for user-owned GNUPGHOME)
-          # chmod 600 "$GNUPGHOME/gpg-agent.conf" 
-
-          # 5. Start gpg-agent and set its environment variables for the current shell
-          echo "Starting gpg-agent and sourcing its environment..."
-          # The --daemon flag is important. gpg-agent will use gpg-agent.conf from its homedir.
           eval $(gpg-agent --homedir "$GNUPGHOME" --daemon)
-          
-          if [ -z "$GPG_AGENT_INFO" ]; then
-            echo "Warning: GPG_AGENT_INFO was not set by gpg-agent. This might indicate an issue." >&2
-          else
-            echo "GPG_AGENT_INFO is set to: $GPG_AGENT_INFO"
-          fi
-
-          # 6. Generate the GPG key pair (should now respect gpg.conf)
-          echo "Generating GPG key..."
           gpg --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
-          
-          # 7. Extract and output the GPG Key Fingerprint
-          GPG_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
-          if [ -z "$GPG_FINGERPRINT" ]; then
-            echo "Error: Could not retrieve GPG Key Fingerprint." >&2
-            gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}"
-            exit 1
-          fi
-          echo "GPG_FINGERPRINT_VALUE=$GPG_FINGERPRINT" >> $GITHUB_OUTPUT
-          echo "Generated GPG Key Fingerprint: $GPG_FINGERPRINT"
-
-          # 8. Export keys to legacy formats (pubring.gpg, secring.gpg)
-          echo "Exporting public keys to $GNUPGHOME/pubring.gpg..."
+          FPR=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
+          echo "GPG_FINGERPRINT_VALUE=$FPR" >> $GITHUB_OUTPUT
           gpg --export -o "$GNUPGHOME/pubring.gpg"
-          
-          echo "Exporting secret keys to $GNUPGHOME/secring.gpg..."
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
-
-          # 9. Verify legacy file creation
-          echo "Verifying presence and content of legacy keyring files in $GNUPGHOME:"
-          if [ -f "$GNUPGHOME/pubring.gpg" ] && [ -s "$GNUPGHOME/pubring.gpg" ]; then
-            echo "$GNUPGHOME/pubring.gpg exists and is not empty."
-            ls -l "$GNUPGHOME/pubring.gpg"
-          else
-            echo "Error: $GNUPGHOME/pubring.gpg was NOT created or is empty!" >&2; ls -laR "$GNUPGHOME"; exit 1;
-          fi
-          
-          if [ -f "$GNUPGHOME/secring.gpg" ] && [ -s "$GNUPGHOME/secring.gpg" ]; then
-            echo "$GNUPGHOME/secring.gpg exists and is not empty."
-            ls -l "$GNUPGHOME/secring.gpg"
-          else
-            echo "Error: $GNUPGHOME/secring.gpg was NOT created or is empty!" >&2; ls -laR "$GNUPGHOME"; exit 1;
-          fi
-          
-          echo "Listing GPG keys:"
-          gpg --list-keys
-          gpg --list-secret-keys
-          
-          echo "Full contents of GNUPGHOME ($GNUPGHOME) at end of setup:"
-          ls -laR "$GNUPGHOME"
-
-          echo "Testing direct GPG signing in $GNUPGHOME..."
-          echo "Test content for direct signing" > test_file_for_signing.txt
-          # gpg command should pick up batch and pinentry-mode from gpg.conf
-          gpg --passphrase '' --local-user "$GPG_FINGERPRINT" --detach-sign test_file_for_signing.txt
-          if [ -f "test_file_for_signing.txt.sig" ]; then
-            echo "Direct GPG signing test successful."
-            ls -l test_file_for_signing.txt*
-          else
-            echo "Error: Direct GPG signing test FAILED." >&2
-          fi
+          echo "Test file" > test.txt
+          gpg --passphrase '' --local-user "$FPR" --detach-sign test.txt
+          ls -l test.txt*
 
       - name: Package chart with provenance
         env:
           GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
-          GPG_KEY_ID_FOR_HELM: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
-          GPG_TTY: $(tty) 
+          GPG_KEY_ID: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
         run: |
-          echo "Preparing environment for Helm package step..."
-          echo "GNUPGHOME for Helm: $GNUPGHOME"
-          echo "GPG_KEY_ID for Helm: $GPG_KEY_ID_FOR_HELM"
-          # GPG_TTY is set in the env block, but re-exporting can ensure it's active if needed
-          export GPG_TTY=$(tty)
-          echo "Effective GPG_TTY for Helm: $GPG_TTY"
-          
-          # The gpg.conf and gpg-agent.conf within $GNUPGHOME (set above) should influence Helm's gpg calls.
-          # No need to explicitly start or source gpg-agent here if the conf files are doing their job.
-
-          echo "Checking for $GNUPGHOME/pubring.gpg from Helm step's perspective BEFORE packaging:"
-          if [ -f "$GNUPGHOME/pubring.gpg" ]; then
-            echo "$GNUPGHOME/pubring.gpg FOUND."
-            ls -l "$GNUPGHOME/pubring.gpg"
-          else
-            echo "CRITICAL ERROR: $GNUPGHOME/pubring.gpg NOT FOUND!" >&2; ls -laR "$GNUPGHOME" || echo "GNUPGHOME not found"; exit 1;
-          fi
-          
-          if [ -f "$GNUPGHOME/secring.gpg" ]; then
-            echo "$GNUPGHOME/secring.gpg FOUND."
-            ls -l "$GNUPGHOME/secring.gpg"
-          else
-            echo "CRITICAL ERROR: $GNUPGHOME/secring.gpg NOT FOUND!" >&2; exit 1;
-          fi
-
-          echo "Attempting to package chart..."
+          echo "Packaging chart with legacy secring..."
           helm package "$CHART_DIR" \
             --sign \
-            --key "$GPG_KEY_ID_FOR_HELM" \
-            --debug
+            --key "$GPG_KEY_ID" \
+            --keyring "$GNUPGHOME/secring.gpg"
 
-      # ... rest of the workflow (Push chart, Get digest, Sign with Cosign) remains the same ...
       - name: Push chart to OCI
         run: |
           CHART_PACKAGE_FILE=$(ls *.tgz | head -n 1)
-          if [ -z "$CHART_PACKAGE_FILE" ]; then
-            echo "Error: No .tgz chart package found to push." >&2
-            exit 1
-          fi
-          echo "Pushing chart package: $CHART_PACKAGE_FILE"
           helm push "$CHART_PACKAGE_FILE" "oci://ghcr.io/${{ github.repository_owner }}/charts"
 
       - name: Get chart digest
@@ -217,31 +112,19 @@ jobs:
           CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
           VERSION=${GITHUB_REF#refs/tags/}
           OCI_CHART_REF_BASE="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}"
-          
-          echo "Fetching manifest digest for: ${OCI_CHART_REF_BASE}:${VERSION}"
           MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${VERSION}" | jq -r '.digest')
-
           if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
-            echo "Warning: Could not retrieve manifest digest directly. Trying fallback by pushing temp tag..." >&2
             TEMP_TAG="temp-digest-$(date +%s)-${RANDOM}"
             oras manifest push "${OCI_CHART_REF_BASE}:${TEMP_TAG}" "${OCI_CHART_REF_BASE}:${VERSION}"
             MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${TEMP_TAG}" | jq -r '.digest')
-            oras manifest delete "${OCI_CHART_REF_BASE}:${TEMP_TAG}" # Clean up
-          fi
-
-          if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
-            echo "Error: Still could not retrieve a valid manifest digest." >&2
-            exit 1
+            oras manifest delete "${OCI_CHART_REF_BASE}:${TEMP_TAG}"
           fi
           echo "MANIFEST_DIGEST_VALUE=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
-          echo "Using Manifest Digest for Cosign: $MANIFEST_DIGEST"
 
       - name: Sign chart with Cosign (digest)
         run: |
           CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
-          CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
-          echo "Signing OCI chart with Cosign: $CHART_OCI_REF_WITH_DIGEST"
-          export COSIGN_EXPERIMENTAL=1 
-          cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
-          echo "Cosign signing complete. Verifying signatures (optional)..."
-          cosign verify "$CHART_OCI_REF_WITH_DIGEST"
+          REF="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
+          export COSIGN_EXPERIMENTAL=1
+          cosign sign --yes "$REF"
+          cosign verify "$REF"
