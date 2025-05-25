@@ -57,14 +57,18 @@ jobs:
       - name: Auto-generate GPG Key for Provenance
         run: |
           export GNUPGHOME="$(mktemp -d)"
+          echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
           gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" default default 1d
           KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
-          echo "Using key: $KEY_ID"
+          echo "Generated key: $KEY_ID in $GNUPGHOME"
 
       - name: Package chart with provenance
         run: |
-          helm package $CHART_DIR --sign --key ${{ env.GPG_KEY_ID }} --keyring ~/.gnupg/pubring.kbx
+          helm package $CHART_DIR \
+            --sign \
+            --key ${{ env.GPG_KEY_ID }} \
+            --keyring $GNUPGHOME/pubring.kbx
 
       - name: Push chart to OCI
         run: |
