@@ -88,7 +88,7 @@ jobs:
       - name: Get chart digest
         id: digest
         run: |
-          CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
+          CHART_NAME_LOWER="backstage"
           VERSION=${GITHUB_REF#refs/tags/}
           OCI_CHART_REF_BASE="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}"
           MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${VERSION}" | jq -r '.digest')
@@ -96,7 +96,7 @@ jobs:
 
       - name: Sign chart with Cosign (digest)
         run: |
-          CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
+          CHART_NAME_LOWER="backstage"
           CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
           export COSIGN_EXPERIMENTAL=1 
           cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
