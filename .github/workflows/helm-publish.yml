@@ -31,11 +31,13 @@ jobs:
         with:
           version: v3.14.3
 
-      - name: Install jq and oras
+      - name: Install jq, gnupg, curl, and oras
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq gnupg2 curl
-          curl -sL https://github.com/oras-project/oras/releases/latest/download/oras_$(uname -s)_amd64.tar.gz | tar -xz
+          ORAS_VERSION="1.1.0"
+          curl -LO https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          tar -zxvf oras_${ORAS_VERSION}_linux_amd64.tar.gz
           sudo mv oras /usr/local/bin/oras
 
       - name: Set up Cosign
