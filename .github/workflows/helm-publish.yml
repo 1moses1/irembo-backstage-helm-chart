@@ -80,12 +80,12 @@ jobs:
           pinentry-mode loopback
           batch
           yes
-EOF
+          EOF
           
           cat > "$GNUPGHOME/gpg-agent.conf" << EOF
           allow-loopback-pinentry
           pinentry-program /usr/bin/pinentry-curses
-EOF
+          EOF
 
           echo "Starting gpg-agent with explicit configuration..."
           gpg-agent --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry
@@ -101,7 +101,7 @@ EOF
           Expire-Date: 1d
           Passphrase: 
           %commit
-EOF
+          EOF
           
           gpg --batch --gen-key /tmp/gpg-key-script
           
