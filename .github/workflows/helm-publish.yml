@@ -1,107 +1,125 @@
-name: Release Helm Chart with Cosign (OCI)
-
+name: Release Helm Chart
 on:
   workflow_dispatch:
   release:
     types: [published]
-
+permissions:
+  contents: read           # for actions/checkout
+  packages: write          # to push Helm chart to GHCR
+  id-token: write          # to enable OIDC token for Cosign
 jobs:
   release-chart:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-
     env:
-      GPG_NAME: "1moses1"
-      GPG_EMAIL: "iradukundam47@gmail.com"
-      CHART_DIR: "backstage-helm-chart"
-      YQ_VERSION: "v4.40.5"
-
+      GPG_NAME: lmoses1
+      GPG_EMAIL: iradukundam47@gmail.com
+      CHART_DIR: backstage-helm-chart
+      YQ_VERSION: v4.30.5        # version of yq to install for YAML editing
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Configure Git Identity
         run: |
-          git config user.name "${{ env.GPG_NAME }}"
-          git config user.email "${{ env.GPG_EMAIL }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4.3.0
-        with:
-          version: v3.14.3
+        uses: azure/setup-helm@v3
 
-      - name: Install dependencies
+      - name: Install dependencies (jq, yq, GnuPG, curl, ORAS)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq gnupg2 curl coreutils pinentry-curses 
-          sudo wget https://github.com/mikefarah/yq/releases/download/${{ env.YQ_VERSION }}/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo apt-get install -y jq gnupg2 curl
+          # Install yq for YAML manipulation
+          sudo curl -sL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
-          ORAS_VERSION="1.1.0"
-          curl -LO https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
-          tar -zxvf oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          # Install ORAS CLI for pushing OCI artifacts
+          curl -sL "https://github.com/oras-project/oras/releases/latest/download/oras_$(uname -s)_amd64.tar.gz" | tar -xz
           sudo mv oras /usr/local/bin/oras
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v3.5.0
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.0'  # Install Cosign CLI
 
       - name: Authenticate to GHCR (Helm + Docker)
+        env:
+          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Log in to GHCR for Helm/ORAS pushes (uses GitHub token with packages:write)
+          echo "$CR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm registry login -u ${{ github.actor }} -p "$CR_PAT" ghcr.io
 
       - name: Update Chart Version from Tag
+        id: prep_chart
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
+          TAG="${GITHUB_REF#refs/tags/}"            # e.g. refs/tags/v1.2.3 -> v1.2.3
+          VERSION="${TAG#v}"                        # drop leading "v" if present
+          yq eval -i ".version = \"${VERSION}\"" "$CHART_DIR/Chart.yaml"
 
-      - name: Auto-generate GPG Key and Prepare Environment
+      - name: Auto-generate GPG Key for Provenance
         id: gpg_setup
-        run: |
-          export GNUPGHOME="$(mktemp -d)"
-          echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
-          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
-          gpg --export -o "$GNUPGHOME/pubring.gpg"
-          gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
         env:
           GPG_NAME: ${{ env.GPG_NAME }}
           GPG_EMAIL: ${{ env.GPG_EMAIL }}
+        run: |
+          export GNUPGHOME="$(mktemp -d)"
+          # Generate a new GPG key (non-expiring) for chart signing
+          gpg --batch --quick-generate-key "${GPG_NAME} <${GPG_EMAIL}>" default default 0
+          # Export secret key to legacy keyring (secring.gpg) for Helm compatibility
+          gpg --batch --export-secret-keys > "$GNUPGHOME/secring.gpg"
+          # Capture the generated key fingerprint (40-char hex)
+          KEY_FPR=$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+          echo "Generated key: $KEY_FPR in $GNUPGHOME"
+          # Persist GPG environment for subsequent steps
+          echo "GPG_KEY_ID=$KEY_FPR" >> $GITHUB_ENV
+          echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
+          # Set GPG_TTY for non-interactive signing
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
       - name: Package chart with provenance
         run: |
           helm package "$CHART_DIR" \
-            --sign \
-            --key "${{ env.GPG_EMAIL }}" \
-            --keyring "$GNUPGHOME/secring.gpg"
+            --sign --key "${{ env.GPG_KEY_ID }}" \
+            --keyring "${{ env.GNUPGHOME }}/pubring.kbx"
+          # Helm will produce a packaged chart .tgz and a .prov signature file
+
+      - name: Push chart to OCI (GHCR)
         env:
-          CHART_DIR: ${{ env.CHART_DIR }}
-          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
-          GPG_EMAIL: ${{ env.GPG_EMAIL }}
-
-
-      - name: Push chart to OCI
+          ORAS_AUTH_HEADER: "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"
         run: |
-          CHART_PACKAGE_FILE=$(ls *.tgz | head -n 1)
-          helm push "$CHART_PACKAGE_FILE" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+          CHART_TGZ=$(ls ./"$CHART_DIR"-*.tgz)        # e.g., backstage-helm-chart-1.2.3.tgz
+          PROV_FILE=$(ls ./"$CHART_DIR"-*.tgz.prov)   # e.g., backstage-helm-chart-1.2.3.tgz.prov
+          # Push chart and provenance file as an OCI artifact to ghcr.io
+          oras push ghcr.io/${{ github.repository }}/$(basename "$CHART_DIR"):${{ steps.prep_chart.outputs.VERSION }} \
+            "$CHART_TGZ" \
+            "$PROV_FILE"
 
       - name: Get chart digest
         id: digest
+        env:
+          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CHART_NAME_LOWER="backstage"
-          VERSION=${GITHUB_REF#refs/tags/}
-          OCI_CHART_REF_BASE="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}"
-          MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${VERSION}" | jq -r '.digest')
-          echo "MANIFEST_DIGEST_VALUE=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
+          REPO="${{ github.repository }}"
+          CHART_NAME="$(basename "$CHART_DIR")"
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Query GHCR for the manifest digest of the pushed chart image
+          DIGEST=$(curl -sI -H "Authorization: Bearer $CR_PAT" \
+            "https://ghcr.io/v2/$REPO/$CHART_NAME/manifests/$TAG" \
+            | sed -n 's/^Docker-Content-Digest: //p' | tr -d '\r')
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Sign chart with Cosign (digest)
+        env:
+          COSIGN_EXPERIMENTAL: "true"   # enable keyless signing with OIDC
         run: |
-          CHART_NAME_LOWER="backstage"
-          CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
-          export COSIGN_EXPERIMENTAL=1 
-          cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
+          # Use the OCI digest reference for signing (ensures immutability)
+          CHART_REF="ghcr.io/${{ github.repository }}/$(basename "$CHART_DIR")@${{ steps.digest.outputs.digest }}"
+          echo "Signing OCI artifact ${CHART_REF}"
+          cosign sign --yes --keyless "$CHART_REF"
+          # Verify the signature with the correct certificate identity and issuer
           cosign verify \
             --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/${{ github.workflow }}@${{ github.ref }}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "$CHART_OCI_REF_WITH_DIGEST"
-
+            "$CHART_REF"
