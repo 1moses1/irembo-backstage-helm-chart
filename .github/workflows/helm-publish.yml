@@ -62,20 +62,23 @@ jobs:
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
           gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
-          GPG_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
-          echo "GPG_FINGERPRINT_VALUE=$GPG_FINGERPRINT" >> $GITHUB_OUTPUT
           gpg --export -o "$GNUPGHOME/pubring.gpg"
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
+        env:
+          GPG_NAME: ${{ env.GPG_NAME }}
+          GPG_EMAIL: ${{ env.GPG_EMAIL }}
 
       - name: Package chart with provenance
         run: |
           helm package "$CHART_DIR" \
             --sign \
-            --key "$GPG_KEY_ID_FOR_HELM" \
+            --key "${{ env.GPG_EMAIL }}" \
             --keyring "$GNUPGHOME/secring.gpg"
         env:
+          CHART_DIR: ${{ env.CHART_DIR }}
           GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
-          GPG_KEY_ID_FOR_HELM: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
+          GPG_EMAIL: ${{ env.GPG_EMAIL }}
+
 
       - name: Push chart to OCI
         run: |
