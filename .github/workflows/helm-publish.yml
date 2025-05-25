@@ -130,8 +130,8 @@ jobs:
             }'
 
       - name: Output ArtifactHub Chart Link
-        if: ${{ success() }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "📦 Chart successfully published!"
-          echo "🔗 View it here: https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage"
+          VERSION=${{ github.ref }}
+          echo "📦 Chart pushed successfully!"
+          echo "📡 Waiting for Artifact Hub to index the repository (this can take ~30 mins)."
+          echo "🔗 Expected URL (once indexed): https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage"
