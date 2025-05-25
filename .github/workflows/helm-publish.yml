@@ -95,6 +95,6 @@ jobs:
           export COSIGN_EXPERIMENTAL=1 
           cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
           cosign verify \
-            --certificate-identity "https://github.com/${{ github.repository }}/github-actions@${{ github.ref }}" \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/helm-publish.yml@${{ github.ref }}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "$CHART_OCI_REF_WITH_DIGEST"
