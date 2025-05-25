@@ -58,7 +58,7 @@ jobs:
         run: |
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
-          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" default default 1d
+          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
           KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
           echo "Generated key: $KEY_ID in $GNUPGHOME"
