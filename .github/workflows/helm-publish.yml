@@ -10,7 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write  # Required for keyless signing with OIDC
+      id-token: write
+
+    env:
+      GPG_NAME: "1moses1"
+      GPG_EMAIL: "iradukundam47@gmail.com"
+      CHART_DIR: "backstage-helm-chart"
 
     steps:
       - name: Checkout
@@ -18,35 +23,58 @@ jobs:
 
       - name: Configure Git Identity
         run: |
-          git config user.name "1moses1"
-          git config user.email "iradukundam47@gmail.com"
+          git config user.name "${{ env.GPG_NAME }}"
+          git config user.email "${{ env.GPG_EMAIL }}"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4.3.0
         with:
           version: v3.14.3
 
+      - name: Install jq and oras
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq gnupg2 curl
+          curl -sL https://github.com/oras-project/oras/releases/latest/download/oras_$(uname -s)_amd64.tar.gz | tar -xz
+          sudo mv oras /usr/local/bin/oras
+
       - name: Set up Cosign
         uses: sigstore/cosign-installer@v3.5.0
 
-      - name: Authenticate to GHCR
-        run: echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ghcr.io -u 1moses1 --password-stdin
-
-      - name: Authenticate Cosign to GHCR via Docker
-        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u 1moses1 --password-stdin
+      - name: Authenticate to GHCR (Helm + Docker)
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Update Chart Version from Tag
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          yq eval ".version = \"$VERSION\"" -i backstage-helm-chart/Chart.yaml
+          yq eval ".version = \"$VERSION\"" -i $CHART_DIR/Chart.yaml
           echo "Updated Chart.yaml version to $VERSION"
 
-      - name: Save and Push to OCI Registry
+      - name: Auto-generate GPG Key for Provenance
         run: |
-          helm package backstage-helm-chart
-          helm push backstage-*.tgz oci://ghcr.io/1moses1/charts
+          export GNUPGHOME="$(mktemp -d)"
+          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" default default 1d
+          KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
+          echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
+          echo "Using key: $KEY_ID"
 
-      - name: Cosign Sign OCI Helm Chart
+      - name: Package chart with provenance
         run: |
-          CHART_REF="ghcr.io/1moses1/charts/backstage:${GITHUB_REF#refs/tags/}"
+          helm package $CHART_DIR --sign --key ${{ env.GPG_KEY_ID }} --keyring ~/.gnupg/pubring.kbx
+
+      - name: Push chart to OCI
+        run: |
+          helm push backstage-*.tgz oci://ghcr.io/${{ github.actor }}/charts
+
+      - name: Get chart digest
+        id: digest
+        run: |
+          DIGEST=$(oras manifest fetch --format json ghcr.io/${{ github.actor }}/charts/backstage:${GITHUB_REF#refs/tags/} | jq -r '.config.digest')
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Sign chart with Cosign (digest)
+        run: |
+          CHART_REF="ghcr.io/${{ github.actor }}/charts/backstage@${{ steps.digest.outputs.digest }}"
           cosign sign --yes $CHART_REF
