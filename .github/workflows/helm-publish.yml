@@ -11,7 +11,6 @@ jobs:
     permissions:
       contents: write
       id-token: write
-
     env:
       GPG_NAME: "1moses1"
       GPG_EMAIL: "iradukundam47@gmail.com"
@@ -36,7 +35,7 @@ jobs:
         run: |
           sudo apt-get update -y
           # Ensure pinentry-curses is installed (common non-interactive pinentry)
-          sudo apt-get install -y jq gnupg2 curl coreutils pinentry-curses 
+          sudo apt-get install -y jq gnupg2 curl coreutils pinentry-curses
           
           echo "Installing yq ${{ env.YQ_VERSION }}..."
           sudo wget https://github.com/mikefarah/yq/releases/download/${{ env.YQ_VERSION }}/yq_linux_amd64 -O /usr/local/bin/yq
@@ -103,7 +102,11 @@ jobs:
           echo "Exporting secret keys to $GNUPGHOME/secring.gpg..."
           gpg --batch --yes --export-secret-keys -o "$GNUPGHOME/secring.gpg"
 
-          echo "Verifying presence and content of legacy keyring files in $GNUPGHOME:"
+          # CRITICAL FIX: Export ASCII armored private key for Helm
+          echo "Exporting ASCII armored private key for Helm..."
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --armor --export-secret-keys "$GPG_FINGERPRINT" > "$GNUPGHOME/private.key"
+          
+          echo "Verifying presence and content of keyring files in $GNUPGHOME:"
           if [ -f "$GNUPGHOME/pubring.gpg" ] && [ -s "$GNUPGHOME/pubring.gpg" ]; then
             echo "$GNUPGHOME/pubring.gpg exists and is not empty."
             ls -l "$GNUPGHOME/pubring.gpg"
@@ -119,6 +122,14 @@ jobs:
           else
             echo "Error: $GNUPGHOME/secring.gpg was NOT created or is empty!" >&2
             ls -laR "$GNUPGHOME"
+            exit 1
+          fi
+
+          if [ -f "$GNUPGHOME/private.key" ] && [ -s "$GNUPGHOME/private.key" ]; then
+            echo "$GNUPGHOME/private.key exists and is not empty."
+            ls -l "$GNUPGHOME/private.key"
+          else
+            echo "Error: $GNUPGHOME/private.key was NOT created or is empty!" >&2
             exit 1
           fi
           
@@ -137,18 +148,19 @@ jobs:
             ls -l test_file_for_signing.txt*
           else
             echo "Error: Direct GPG signing test FAILED. Signature file not created." >&2
-            # Consider exiting if this critical test fails: exit 1
           fi
 
       - name: Package chart with provenance
         env:
           GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
           GPG_KEY_ID_FOR_HELM: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
-          GPG_TTY: $(tty) 
         run: |
           echo "Preparing environment for Helm package step..."
           echo "GNUPGHOME for Helm: $GNUPGHOME"
           echo "GPG_KEY_ID for Helm: $GPG_KEY_ID_FOR_HELM"
+          
+          # Set GPG_TTY for this step
+          export GPG_TTY=$(tty)
           echo "GPG_TTY for Helm: $GPG_TTY"
           
           echo "Checking for $GNUPGHOME/pubring.gpg from Helm step's perspective BEFORE packaging:"
@@ -159,7 +171,7 @@ jobs:
             echo "CRITICAL ERROR: $GNUPGHOME/pubring.gpg NOT FOUND by Helm step!" >&2
             echo "Listing contents of $GNUPGHOME (if it exists):"
             ls -laR "$GNUPGHOME" || echo "$GNUPGHOME directory itself not found or not accessible."
-            # Consider exiting: exit 1
+            exit 1
           fi
           
           if [ -f "$GNUPGHOME/secring.gpg" ]; then
@@ -167,13 +179,48 @@ jobs:
             ls -l "$GNUPGHOME/secring.gpg"
           else
             echo "CRITICAL ERROR: $GNUPGHOME/secring.gpg NOT FOUND by Helm step!" >&2
+            exit 1
           fi
 
-          echo "Attempting to package chart..."
-          helm package "$CHART_DIR" \
+          if [ -f "$GNUPGHOME/private.key" ]; then
+            echo "$GNUPGHOME/private.key FOUND by Helm step."
+            ls -l "$GNUPGHOME/private.key"
+          else
+            echo "CRITICAL ERROR: $GNUPGHOME/private.key NOT FOUND by Helm step!" >&2
+            exit 1
+          fi
+
+          # Start gpg-agent in this step to ensure it's available
+          echo "Starting gpg-agent for Helm step..."
+          eval $(gpg-agent --homedir "$GNUPGHOME" --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry)
+          
+          # Import the key to ensure it's available
+          echo "Re-importing keys to ensure availability..."
+          gpg --import "$GNUPGHOME/private.key"
+          
+          echo "Listing available keys before packaging..."
+          gpg --list-secret-keys
+
+          echo "Attempting to package chart with multiple methods..."
+          
+          # Method 1: Try with keyring parameter
+          echo "Method 1: Using --keyring parameter..."
+          if helm package "$CHART_DIR" \
             --sign \
             --key "$GPG_KEY_ID_FOR_HELM" \
-            --debug
+            --keyring "$GNUPGHOME/secring.gpg" \
+            --debug; then
+            echo "Method 1 succeeded!"
+          else
+            echo "Method 1 failed, trying Method 2..."
+            
+            # Method 2: Try without keyring parameter but with proper environment
+            echo "Method 2: Using environment variables only..."
+            helm package "$CHART_DIR" \
+              --sign \
+              --key "$GPG_KEY_ID_FOR_HELM" \
+              --debug
+          fi
 
       - name: Push chart to OCI
         run: |
@@ -195,7 +242,6 @@ jobs:
           echo "Fetching manifest digest for: ${OCI_CHART_REF_BASE}:${VERSION}"
           # Ensure oras is authenticated if needed, though docker login might cover it for GHCR
           MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${VERSION}" | jq -r '.digest')
-
           if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
             echo "Warning: Could not retrieve manifest digest directly. Trying fallback by pushing temp tag..." >&2
             TEMP_TAG="temp-digest-$(date +%s)-${RANDOM}"
@@ -203,7 +249,6 @@ jobs:
             MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${TEMP_TAG}" | jq -r '.digest')
             oras manifest delete "${OCI_CHART_REF_BASE}:${TEMP_TAG}" # Clean up
           fi
-
           if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
             echo "Error: Still could not retrieve a valid manifest digest." >&2
             exit 1
