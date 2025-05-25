@@ -100,4 +100,8 @@ jobs:
           CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
           export COSIGN_EXPERIMENTAL=1 
           cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
-          cosign verify "$CHART_OCI_REF_WITH_DIGEST"
+          cosign verify \
+            --certificate-identity "https://github.com/${{ github.actor }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$CHART_OCI_REF_WITH_DIGEST"
+
