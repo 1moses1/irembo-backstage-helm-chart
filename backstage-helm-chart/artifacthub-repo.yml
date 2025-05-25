@@ -1,0 +1,5 @@
+# file: backstage-helm-chart/artifacthub-repo.yml
+repositoryID: "<your-artifacthub-repo-id>"   # Use the actual repository ID from Artifact Hub
+owners:
+  - name: 1moses1
+    email: iradukundam47@gmail.com
