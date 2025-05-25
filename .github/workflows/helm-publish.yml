@@ -56,17 +56,33 @@ jobs:
 
       - name: Auto-generate GPG Key for Provenance
         run: |
+          # Create a temporary GPG home directory
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
-          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
+          echo "Using GNUPGHOME: $GNUPGHOME"
+
+          # Generate the GPG key pair (uses pubring.kbx by default with modern GPG)
+          # Using --pinentry-mode loopback for non-interactive passphrase handling
+          gpg --batch --pinentry-mode loopback --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
+          
+          # Extract the GPG Key ID
           KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
-          echo "Generated key: $KEY_ID in $GNUPGHOME"
+          echo "Generated GPG Key ID: $KEY_ID"
+
+          # Explicitly export keys to legacy formats within GNUPGHOME for compatibility
+          # This is to address tools (like potentially this Helm version/configuration)
+          # that might still look for pubring.gpg / secring.gpg.
+          echo "Exporting public keys to $GNUPGHOME/pubring.gpg"
+          gpg --batch --yes --export -o "$GNUPGHOME/pubring.gpg"
           
-          # Export ASCII-armored key and reimport to keyring.gpg
-          gpg --export --armor "$KEY_ID" > key.asc
-          gpg --no-default-keyring --keyring ./temp-keyring.gpg --import key.asc
-          echo "KEYRING_PATH=$(realpath ./temp-keyring.gpg)" >> $GITHUB_ENV
+          echo "Exporting secret keys to $GNUPGHOME/secring.gpg"
+          gpg --batch --yes --export-secret-keys -o "$GNUPGHOME/secring.gpg"
+
+          echo "Verifying exported keys and listing files in GNUPGHOME:"
+          gpg --list-keys # Should list the key from pubring.gpg if picked up
+          gpg --list-secret-keys # Should list the secret key
+          ls -la "$GNUPGHOME"
 
       - name: Package chart with provenance
         run: |
