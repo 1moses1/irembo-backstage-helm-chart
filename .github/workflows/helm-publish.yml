@@ -73,7 +73,6 @@ jobs:
           helm package $CHART_DIR \
             --sign \
             --key "$GPG_KEY_ID" \
-            --keyring "$KEYRING_PATH"
 
       - name: Push chart to OCI
         run: |
