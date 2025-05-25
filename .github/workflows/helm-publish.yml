@@ -29,19 +29,24 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4.3.0
         with:
-          version: v3.14.3
+          version: v3.14.3 # Ensure this Helm version is what you intend to use
 
-      - name: Install jq, gnupg, curl, and oras
+      - name: Install dependencies (jq, gnupg, curl, oras)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq gnupg2 curl
-          ORAS_VERSION="1.1.0"
-          curl -LO https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
-          tar -zxvf oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          sudo apt-get install -y jq gnupg2 curl coreutils # coreutils for realpath
+          # Install ORAS
+          ORAS_VERSION="1.1.0" # Specify desired ORAS version
+          curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+          tar -zxvf "oras_${ORAS_VERSION}_linux_amd64.tar.gz"
           sudo mv oras /usr/local/bin/oras
+          oras version
 
       - name: Set up Cosign
         uses: sigstore/cosign-installer@v3.5.0
+        # Optionally, specify a Cosign version:
+        # with:
+        #   cosign-release: 'v2.2.3' 
 
       - name: Authenticate to GHCR (Helm + Docker)
         run: |
@@ -50,57 +55,166 @@ jobs:
 
       - name: Update Chart Version from Tag
         run: |
+          # Ensure yq is installed if not already present (e.g., via apt or as a downloaded binary)
+          # sudo apt-get install -y yq # If using the system's yq
+          # For a specific yq version:
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
+          
           VERSION=${GITHUB_REF#refs/tags/}
           yq eval ".version = \"$VERSION\"" -i $CHART_DIR/Chart.yaml
           echo "Updated Chart.yaml version to $VERSION"
+          cat $CHART_DIR/Chart.yaml # Display updated Chart.yaml for verification
 
-      - name: Auto-generate GPG Key for Provenance
+      - name: Auto-generate GPG Key and Test Signing
+        id: gpg_setup
         run: |
           # Create a temporary GPG home directory
           export GNUPGHOME="$(mktemp -d)"
-          echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
+          echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT # Output for use in other steps if needed
           echo "Using GNUPGHOME: $GNUPGHOME"
-
-          # Generate the GPG key pair (uses pubring.kbx by default with modern GPG)
-          # Using --pinentry-mode loopback for non-interactive passphrase handling
-          gpg --batch --pinentry-mode loopback --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
           
-          # Extract the GPG Key ID
-          KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
-          echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
-          echo "Generated GPG Key ID: $KEY_ID"
+          # Set GPG_TTY for non-interactive operations; crucial for gpg-agent and pinentry
+          export GPG_TTY=$(tty)
+          echo "GPG_TTY=$GPG_TTY"
 
-          # Explicitly export keys to legacy formats within GNUPGHOME for compatibility
-          # This is to address tools (like potentially this Helm version/configuration)
-          # that might still look for pubring.gpg / secring.gpg.
-          echo "Exporting public keys to $GNUPGHOME/pubring.gpg"
-          gpg --batch --yes --export -o "$GNUPGHOME/pubring.gpg"
+          # Start gpg-agent in daemon mode with loopback pinentry
+          # This ensures that gpg operations (including from Helm) can get passphrases non-interactively.
+          # The `gpg-agent` command itself will print export statements. We need to capture and eval them.
+          AGENT_INFO_FILE=$(mktemp)
+          gpg-agent --homedir "$GNUPGHOME" --daemon --pinentry-program /usr/bin/pinentry-loopback --allow-loopback-pinentry --write-env-file "$AGENT_INFO_FILE" > /dev/null
           
-          echo "Exporting secret keys to $GNUPGHOME/secring.gpg"
-          gpg --batch --yes --export-secret-keys -o "$GNUPGHOME/secring.gpg"
+          if [ -f "$AGENT_INFO_FILE" ]; then
+            echo "Sourcing GPG Agent Info from $AGENT_INFO_FILE"
+            # Filter out comments and empty lines before sourcing
+            grep -v '^#' "$AGENT_INFO_FILE" | grep -v '^\s*$' > "${AGENT_INFO_FILE}.tmp" && source "${AGENT_INFO_FILE}.tmp"
+            rm "$AGENT_INFO_FILE" "${AGENT_INFO_FILE}.tmp"
+            echo "GPG_AGENT_INFO is set: $GPG_AGENT_INFO"
+          else
+            echo "Warning: GPG Agent info file not created."
+          fi
 
-          echo "Verifying exported keys and listing files in GNUPGHOME:"
-          gpg --list-keys # Should list the key from pubring.gpg if picked up
-          gpg --list-secret-keys # Should list the secret key
-          ls -la "$GNUPGHOME"
+          # Generate the GPG key pair
+          # --pinentry-mode loopback is crucial for non-interactive passphrase handling
+          # --passphrase '' specifies an empty passphrase
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
+          
+          # Extract the GPG Key Fingerprint (more robust than short ID)
+          GPG_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
+          
+          if [ -z "$GPG_FINGERPRINT" ]; then
+            echo "Error: Could not retrieve GPG Key Fingerprint."
+            echo "Listing secret keys output:"
+            gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}"
+            exit 1
+          fi
+          
+          echo "GPG_FINGERPRINT_VALUE=$GPG_FINGERPRINT" >> $GITHUB_OUTPUT # Make fingerprint available as step output
+          echo "Generated GPG Key Fingerprint: $GPG_FINGERPRINT"
+
+          echo "Verifying key presence in GNUPGHOME ($GNUPGHOME):"
+          gpg --list-keys
+          gpg --list-secret-keys
+          
+          echo "Contents of GNUPGHOME ($GNUPGHOME):"
+          ls -laR "$GNUPGHOME"
+
+          # Test direct GPG signing
+          echo "Testing direct GPG signing..."
+          echo "Test content" > test_file.txt
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$GPG_FINGERPRINT" --detach-sign test_file.txt
+          if [ $? -eq 0 ]; then
+            echo "Direct GPG signing test successful (test_file.txt.sig created)."
+            ls -l test_file.txt*
+          else
+            echo "Error: Direct GPG signing test failed."
+            # exit 1 # Optionally exit if direct signing fails, as Helm signing will likely also fail
+          fi
 
       - name: Package chart with provenance
+        env:
+          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
+          GPG_KEY_ID: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
+          GPG_TTY: $(tty) # Re-affirm GPG_TTY in this step's environment
         run: |
-          helm package $CHART_DIR \
+          echo "Using GNUPGHOME for Helm: $GNUPGHOME"
+          echo "Using GPG_KEY_ID for Helm: $GPG_KEY_ID"
+          echo "Using GPG_TTY for Helm: $GPG_TTY"
+          
+          helm package "$CHART_DIR" \
             --sign \
             --key "$GPG_KEY_ID" \
+            --debug # Add Helm debug flag for more verbose output
 
       - name: Push chart to OCI
+        env:
+          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }} # Not strictly needed for push, but good for consistency
         run: |
-          helm push backstage-*.tgz oci://ghcr.io/${{ github.actor }}/charts
+          # The chart name will include the version, e.g., backstage-helm-chart-v0.0.21.tgz
+          # We need to find the .tgz file. It should be the only one.
+          CHART_PACKAGE_FILE=$(ls *.tgz | head -n 1)
+          if [ -z "$CHART_PACKAGE_FILE" ]; then
+            echo "Error: No .tgz chart package found to push."
+            exit 1
+          fi
+          echo "Pushing chart package: $CHART_PACKAGE_FILE"
+          helm push "$CHART_PACKAGE_FILE" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+
 
       - name: Get chart digest
         id: digest
+        env:
+          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }} # Not strictly needed, but good for consistency
         run: |
-          DIGEST=$(oras manifest fetch --format json ghcr.io/${{ github.actor }}/charts/backstage:${GITHUB_REF#refs/tags/} | jq -r '.config.digest')
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          # Construct the chart name and version for fetching the manifest
+          # Assuming CHART_DIR is the chart name and VERSION is from the tag
+          CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
+          VERSION=${GITHUB_REF#refs/tags/}
+          OCI_CHART_REF="oci://ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}"
+          
+          echo "Fetching manifest for: ${OCI_CHART_REF}:${VERSION}"
+          
+          # Oras manifest fetch can be tricky with authentication if not already handled
+          # Ensure docker login covers oras for GHCR or oras login is performed
+          # oras registry login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GHCR_TOKEN }}" # If needed
+          
+          DIGEST_JSON=$(oras manifest fetch --pretty --verbose "${OCI_CHART_REF}:${VERSION}")
+          echo "Fetched manifest JSON: $DIGEST_JSON"
+          
+          # Extract the digest of the config layer, which is often used as the main digest for the chart image
+          # For Helm OCI charts, the manifest might be simpler.
+          # A common way to get the overall manifest digest is to fetch and then get its digest.
+          # Let's try to get the digest of the fetched manifest itself.
+          # This command gets the digest of the manifest list or image manifest.
+          MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF}:${VERSION}" | jq -r '.digest')
+
+          if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
+            echo "Error: Could not retrieve manifest digest using --descriptor."
+            # Fallback or alternative: if the above gives the config digest, we might need the manifest's own digest
+            # This is more reliable for getting the manifest digest that Cosign needs to sign
+            echo "Attempting to get digest of the manifest itself by pushing a dummy tag and resolving..."
+            TEMP_TAG="temp-digest-fetch-$(date +%s)"
+            oras manifest push "${OCI_CHART_REF}:${TEMP_TAG}" "${OCI_CHART_REF}:${VERSION}"
+            MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF}:${TEMP_TAG}" | jq -r '.digest')
+            oras manifest delete "${OCI_CHART_REF}:${TEMP_TAG}" # Clean up dummy tag
+          fi
+
+          if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
+            echo "Error: Still could not retrieve a valid manifest digest."
+            exit 1
+          fi
+
+          echo "MANIFEST_DIGEST_VALUE=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
+          echo "Using Manifest Digest for Cosign: $MANIFEST_DIGEST"
 
       - name: Sign chart with Cosign (digest)
+        env:
+          COSIGN_EXPERIMENTAL: "true" # For OCI image signing, if needed by your Cosign version
+          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }} # Cosign might use GPG keys for its own identity
         run: |
-          CHART_REF="ghcr.io/${{ github.actor }}/charts/backstage@${{ steps.digest.outputs.digest }}"
-          cosign sign --yes $CHART_REF
+          CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${{ env.CHART_DIR }}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
+          echo "Signing OCI chart with Cosign: $CHART_OCI_REF_WITH_DIGEST"
+          cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
+          echo "Cosign signing complete. Verifying signatures (optional)..."
+          cosign verify "$CHART_OCI_REF_WITH_DIGEST"
+          # Add attestation (optional)
+          # cosign attest --yes --predicate "predicate.json" "$CHART_OCI_REF_WITH_DIGEST"
