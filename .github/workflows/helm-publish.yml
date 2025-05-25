@@ -36,15 +36,12 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq gnupg2 curl coreutils pinentry-curses 
-          echo "Installing yq ${{ env.YQ_VERSION }}..."
           sudo wget https://github.com/mikefarah/yq/releases/download/${{ env.YQ_VERSION }}/yq_linux_amd64 -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
-          echo "yq version: $(yq --version)"
           ORAS_VERSION="1.1.0"
-          curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
-          tar -zxvf "oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+          curl -LO https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          tar -zxvf oras_${ORAS_VERSION}_linux_amd64.tar.gz
           sudo mv oras /usr/local/bin/oras
-          echo "oras version: $(oras version)"
 
       - name: Set up Cosign
         uses: sigstore/cosign-installer@v3.5.0
@@ -58,48 +55,27 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
-          echo "Updated Chart.yaml version to $VERSION"
-          cat "$CHART_DIR/Chart.yaml"
 
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
         run: |
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
-          export GPG_TTY=$(tty)
-          echo "Creating $GNUPGHOME/gpg.conf..."
-          cat <<EOF > "$GNUPGHOME/gpg.conf"
-          batch
-          no-tty
-          pinentry-mode loopback
-          EOF
-          echo "Creating $GNUPGHOME/gpg-agent.conf..."
-          cat <<EOF > "$GNUPGHOME/gpg-agent.conf"
-          pinentry-program /usr/bin/pinentry-curses
-          allow-loopback-pinentry
-          default-cache-ttl 600
-          max-cache-ttl 7200
-          EOF
-          eval $(gpg-agent --homedir "$GNUPGHOME" --daemon)
-          gpg --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
-          FPR=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
-          echo "GPG_FINGERPRINT_VALUE=$FPR" >> $GITHUB_OUTPUT
+          gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
+          GPG_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
+          echo "GPG_FINGERPRINT_VALUE=$GPG_FINGERPRINT" >> $GITHUB_OUTPUT
           gpg --export -o "$GNUPGHOME/pubring.gpg"
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
-          echo "Test file" > test.txt
-          gpg --passphrase '' --local-user "$FPR" --detach-sign test.txt
-          ls -l test.txt*
 
       - name: Package chart with provenance
-        env:
-          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
-          GPG_KEY_ID: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
         run: |
-          echo "Packaging chart with legacy secring..."
           helm package "$CHART_DIR" \
             --sign \
-            --key "$GPG_KEY_ID" \
+            --key "$GPG_KEY_ID_FOR_HELM" \
             --keyring "$GNUPGHOME/secring.gpg"
+        env:
+          GNUPGHOME: ${{ steps.gpg_setup.outputs.GNUPGHOME_PATH }}
+          GPG_KEY_ID_FOR_HELM: ${{ steps.gpg_setup.outputs.GPG_FINGERPRINT_VALUE }}
 
       - name: Push chart to OCI
         run: |
@@ -113,18 +89,12 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           OCI_CHART_REF_BASE="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}"
           MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${VERSION}" | jq -r '.digest')
-          if [ -z "$MANIFEST_DIGEST" ] || [ "$MANIFEST_DIGEST" == "null" ]; then
-            TEMP_TAG="temp-digest-$(date +%s)-${RANDOM}"
-            oras manifest push "${OCI_CHART_REF_BASE}:${TEMP_TAG}" "${OCI_CHART_REF_BASE}:${VERSION}"
-            MANIFEST_DIGEST=$(oras manifest fetch --descriptor "${OCI_CHART_REF_BASE}:${TEMP_TAG}" | jq -r '.digest')
-            oras manifest delete "${OCI_CHART_REF_BASE}:${TEMP_TAG}"
-          fi
           echo "MANIFEST_DIGEST_VALUE=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
 
       - name: Sign chart with Cosign (digest)
         run: |
           CHART_NAME_LOWER=$(echo "${{ env.CHART_DIR }}" | tr '[:upper:]' '[:lower:]')
-          REF="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
-          export COSIGN_EXPERIMENTAL=1
-          cosign sign --yes "$REF"
-          cosign verify "$REF"
+          CHART_OCI_REF_WITH_DIGEST="ghcr.io/${{ github.repository_owner }}/charts/${CHART_NAME_LOWER}@${{ steps.digest.outputs.MANIFEST_DIGEST_VALUE }}"
+          export COSIGN_EXPERIMENTAL=1 
+          cosign sign --yes "$CHART_OCI_REF_WITH_DIGEST"
+          cosign verify "$CHART_OCI_REF_WITH_DIGEST"
