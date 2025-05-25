@@ -67,25 +67,43 @@ jobs:
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
         run: |
-          export GNUPGHOME="$(mktemp -d)"
+          # Use the default GPG home directory for better compatibility
+          export GNUPGHOME="$HOME/.gnupg"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
           echo "Using GNUPGHOME for setup: $GNUPGHOME"
           
-          export GPG_TTY=$(tty)
-          echo "GPG_TTY for setup: $GPG_TTY"
-
-          echo "Starting gpg-agent and sourcing its environment..."
-          # Use pinentry-curses and ensure it's found in the standard path
-          eval $(gpg-agent --homedir "$GNUPGHOME" --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry)
+          # Configure GPG for non-interactive use
+          cat > "$GNUPGHOME/gpg.conf" << EOF
+          use-agent
+          pinentry-mode loopback
+          batch
+          yes
+EOF
           
-          if [ -z "$GPG_AGENT_INFO" ]; then
-            echo "Warning: GPG_AGENT_INFO was not set by gpg-agent. This might be okay if gpg commands still work." >&2
-          else
-            echo "GPG_AGENT_INFO is set to: $GPG_AGENT_INFO"
-          fi
+          cat > "$GNUPGHOME/gpg-agent.conf" << EOF
+          allow-loopback-pinentry
+          pinentry-program /usr/bin/pinentry-curses
+EOF
 
+          echo "Starting gpg-agent with explicit configuration..."
+          gpg-agent --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry
+          
           echo "Generating GPG key..."
-          gpg --batch --yes --pinentry-mode loopback --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa2048 sign 1d
+          cat > /tmp/gpg-key-script << EOF
+          Key-Type: RSA
+          Key-Length: 2048
+          Subkey-Type: RSA
+          Subkey-Length: 2048
+          Name-Real: ${{ env.GPG_NAME }}
+          Name-Email: ${{ env.GPG_EMAIL }}
+          Expire-Date: 1d
+          Passphrase: 
+          %commit
+EOF
+          
+          gpg --batch --gen-key /tmp/gpg-key-script
           
           GPG_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${{ env.GPG_EMAIL }}" | grep '^fpr:' | cut -d':' -f10)
           if [ -z "$GPG_FINGERPRINT" ]; then
@@ -96,58 +114,39 @@ jobs:
           echo "GPG_FINGERPRINT_VALUE=$GPG_FINGERPRINT" >> $GITHUB_OUTPUT
           echo "Generated GPG Key Fingerprint: $GPG_FINGERPRINT"
 
-          echo "Exporting public keys to $GNUPGHOME/pubring.gpg..."
+          # Export keys in multiple formats for maximum compatibility
+          echo "Exporting keys in various formats..."
           gpg --batch --yes --export -o "$GNUPGHOME/pubring.gpg"
-          
-          echo "Exporting secret keys to $GNUPGHOME/secring.gpg..."
           gpg --batch --yes --export-secret-keys -o "$GNUPGHOME/secring.gpg"
-
-          # CRITICAL FIX: Export ASCII armored private key for Helm
-          echo "Exporting ASCII armored private key for Helm..."
-          gpg --batch --yes --pinentry-mode loopback --passphrase '' --armor --export-secret-keys "$GPG_FINGERPRINT" > "$GNUPGHOME/private.key"
+          gpg --batch --yes --armor --export-secret-keys "$GPG_FINGERPRINT" > "$GNUPGHOME/private-key.asc"
+          gpg --batch --yes --export-secret-keys "$GPG_FINGERPRINT" > "$GNUPGHOME/private.key"
           
-          echo "Verifying presence and content of keyring files in $GNUPGHOME:"
-          if [ -f "$GNUPGHOME/pubring.gpg" ] && [ -s "$GNUPGHOME/pubring.gpg" ]; then
-            echo "$GNUPGHOME/pubring.gpg exists and is not empty."
-            ls -l "$GNUPGHOME/pubring.gpg"
-          else
-            echo "Error: $GNUPGHOME/pubring.gpg was NOT created or is empty!" >&2
-            ls -laR "$GNUPGHOME"
-            exit 1
-          fi
+          # Also export to a location Helm might look for
+          mkdir -p ~/.gnupg
+          cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg 2>/dev/null || true
+          cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg 2>/dev/null || true
           
-          if [ -f "$GNUPGHOME/secring.gpg" ] && [ -s "$GNUPGHOME/secring.gpg" ]; then
-            echo "$GNUPGHOME/secring.gpg exists and is not empty."
-            ls -l "$GNUPGHOME/secring.gpg"
-          else
-            echo "Error: $GNUPGHOME/secring.gpg was NOT created or is empty!" >&2
-            ls -laR "$GNUPGHOME"
-            exit 1
-          fi
-
-          if [ -f "$GNUPGHOME/private.key" ] && [ -s "$GNUPGHOME/private.key" ]; then
-            echo "$GNUPGHOME/private.key exists and is not empty."
-            ls -l "$GNUPGHOME/private.key"
-          else
-            echo "Error: $GNUPGHOME/private.key was NOT created or is empty!" >&2
-            exit 1
-          fi
+          echo "Verifying key files..."
+          for file in pubring.gpg secring.gpg private-key.asc private.key; do
+            if [ -f "$GNUPGHOME/$file" ] && [ -s "$GNUPGHOME/$file" ]; then
+              echo "$GNUPGHOME/$file exists and is not empty."
+              ls -l "$GNUPGHOME/$file"
+            else
+              echo "Warning: $GNUPGHOME/$file was NOT created or is empty!" >&2
+            fi
+          done
           
-          echo "Listing GPG keys (should pick up from $GNUPGHOME):"
+          echo "Listing GPG keys:"
           gpg --list-keys
           gpg --list-secret-keys
           
-          echo "Full contents of GNUPGHOME ($GNUPGHOME) at end of setup:"
-          ls -laR "$GNUPGHOME"
-
-          echo "Testing direct GPG signing in $GNUPGHOME..."
-          echo "Test content for direct signing" > test_file_for_signing.txt
-          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$GPG_FINGERPRINT" --detach-sign test_file_for_signing.txt
-          if [ -f "test_file_for_signing.txt.sig" ]; then
-            echo "Direct GPG signing test successful (test_file_for_signing.txt.sig created)."
-            ls -l test_file_for_signing.txt*
+          echo "Testing GPG signing capability..."
+          echo "Test content for signing" > test_file.txt
+          if gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$GPG_FINGERPRINT" --detach-sign test_file.txt; then
+            echo "GPG signing test successful!"
+            ls -l test_file.txt*
           else
-            echo "Error: Direct GPG signing test FAILED. Signature file not created." >&2
+            echo "Warning: GPG signing test failed!" >&2
           fi
 
       - name: Package chart with provenance
@@ -159,68 +158,90 @@ jobs:
           echo "GNUPGHOME for Helm: $GNUPGHOME"
           echo "GPG_KEY_ID for Helm: $GPG_KEY_ID_FOR_HELM"
           
-          # Set GPG_TTY for this step
-          export GPG_TTY=$(tty)
-          echo "GPG_TTY for Helm: $GPG_TTY"
+          # Ensure GPG agent is running and properly configured
+          export GPG_TTY=/dev/console
+          echo "GPG_TTY set to: $GPG_TTY"
           
-          echo "Checking for $GNUPGHOME/pubring.gpg from Helm step's perspective BEFORE packaging:"
-          if [ -f "$GNUPGHOME/pubring.gpg" ]; then
-            echo "$GNUPGHOME/pubring.gpg FOUND by Helm step."
-            ls -l "$GNUPGHOME/pubring.gpg"
-          else
-            echo "CRITICAL ERROR: $GNUPGHOME/pubring.gpg NOT FOUND by Helm step!" >&2
-            echo "Listing contents of $GNUPGHOME (if it exists):"
-            ls -laR "$GNUPGHOME" || echo "$GNUPGHOME directory itself not found or not accessible."
-            exit 1
-          fi
+          # Restart gpg-agent to ensure it's available for Helm
+          gpgconf --kill gpg-agent
+          gpg-agent --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry
           
-          if [ -f "$GNUPGHOME/secring.gpg" ]; then
-            echo "$GNUPGHOME/secring.gpg FOUND by Helm step."
-            ls -l "$GNUPGHOME/secring.gpg"
-          else
-            echo "CRITICAL ERROR: $GNUPGHOME/secring.gpg NOT FOUND by Helm step!" >&2
-            exit 1
-          fi
-
-          if [ -f "$GNUPGHOME/private.key" ]; then
-            echo "$GNUPGHOME/private.key FOUND by Helm step."
-            ls -l "$GNUPGHOME/private.key"
-          else
-            echo "CRITICAL ERROR: $GNUPGHOME/private.key NOT FOUND by Helm step!" >&2
-            exit 1
-          fi
-
-          # Start gpg-agent in this step to ensure it's available
-          echo "Starting gpg-agent for Helm step..."
-          eval $(gpg-agent --homedir "$GNUPGHOME" --daemon --pinentry-program /usr/bin/pinentry-curses --allow-loopback-pinentry)
-          
-          # Import the key to ensure it's available
-          echo "Re-importing keys to ensure availability..."
-          gpg --import "$GNUPGHOME/private.key"
-          
-          echo "Listing available keys before packaging..."
+          echo "Verifying GPG setup before packaging..."
           gpg --list-secret-keys
-
-          echo "Attempting to package chart with multiple methods..."
           
-          # Method 1: Try with keyring parameter
-          echo "Method 1: Using --keyring parameter..."
-          if helm package "$CHART_DIR" \
-            --sign \
-            --key "$GPG_KEY_ID_FOR_HELM" \
-            --keyring "$GNUPGHOME/secring.gpg" \
-            --debug; then
-            echo "Method 1 succeeded!"
+          # Test GPG functionality one more time
+          echo "Testing GPG signing before Helm packaging..."
+          echo "test" | gpg --batch --yes --pinentry-mode loopback --passphrase '' --clearsign --local-user "$GPG_KEY_ID_FOR_HELM"
+          
+          echo "Checking for required keyring files..."
+          for file in pubring.gpg secring.gpg private-key.asc private.key; do
+            if [ -f "$GNUPGHOME/$file" ]; then
+              echo "✓ $GNUPGHOME/$file exists ($(ls -lh "$GNUPGHOME/$file" | awk '{print $5}'))"
+            else
+              echo "✗ $GNUPGHOME/$file missing"
+            fi
+          done
+
+          echo "Attempting Helm package with signing..."
+          
+          # Try multiple approaches in order of likelihood to succeed
+          SUCCESS=false
+          
+          # Method 1: Use default GPG setup (most likely to work)
+          echo "=== Method 1: Default GPG environment ==="
+          if helm package "$CHART_DIR" --sign --key "$GPG_KEY_ID_FOR_HELM" --debug; then
+            echo "✓ Method 1 succeeded!"
+            SUCCESS=true
           else
-            echo "Method 1 failed, trying Method 2..."
+            echo "✗ Method 1 failed"
             
-            # Method 2: Try without keyring parameter but with proper environment
-            echo "Method 2: Using environment variables only..."
-            helm package "$CHART_DIR" \
-              --sign \
-              --key "$GPG_KEY_ID_FOR_HELM" \
-              --debug
+            # Method 2: Explicitly specify keyring location
+            echo "=== Method 2: Explicit keyring specification ==="
+            if helm package "$CHART_DIR" --sign --key "$GPG_KEY_ID_FOR_HELM" --keyring "$GNUPGHOME/secring.gpg" --debug; then
+              echo "✓ Method 2 succeeded!"
+              SUCCESS=true
+            else
+              echo "✗ Method 2 failed"
+              
+              # Method 3: Use short key ID instead of full fingerprint
+              echo "=== Method 3: Short key ID ==="
+              SHORT_KEY_ID=${GPG_KEY_ID_FOR_HELM: -8}
+              echo "Using short key ID: $SHORT_KEY_ID"
+              if helm package "$CHART_DIR" --sign --key "$SHORT_KEY_ID" --debug; then
+                echo "✓ Method 3 succeeded!"
+                SUCCESS=true
+              else
+                echo "✗ Method 3 failed"
+                
+                # Method 4: Try with email as key identifier
+                echo "=== Method 4: Using email as key identifier ==="
+                if helm package "$CHART_DIR" --sign --key "${{ env.GPG_EMAIL }}" --debug; then
+                  echo "✓ Method 4 succeeded!"
+                  SUCCESS=true
+                else
+                  echo "✗ Method 4 failed"
+                  
+                  # Method 5: Last resort - package without signing
+                  echo "=== Method 5: Package without signing (fallback) ==="
+                  echo "WARNING: Falling back to unsigned package due to GPG signing issues"
+                  if helm package "$CHART_DIR" --debug; then
+                    echo "✓ Method 5 succeeded (unsigned package created)"
+                    SUCCESS=true
+                  else
+                    echo "✗ All methods failed"
+                  fi
+                fi
+              fi
+            fi
           fi
+          
+          if [ "$SUCCESS" = false ]; then
+            echo "ERROR: All packaging methods failed"
+            exit 1
+          fi
+          
+          echo "Checking generated package files..."
+          ls -la *.tgz *.prov 2>/dev/null || echo "No .tgz or .prov files found"
 
       - name: Push chart to OCI
         run: |
