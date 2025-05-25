@@ -62,13 +62,18 @@ jobs:
           KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | cut -d':' -f5)
           echo "GPG_KEY_ID=$KEY_ID" >> $GITHUB_ENV
           echo "Generated key: $KEY_ID in $GNUPGHOME"
+          
+          # Export ASCII-armored key and reimport to keyring.gpg
+          gpg --export --armor "$KEY_ID" > key.asc
+          gpg --no-default-keyring --keyring ./temp-keyring.gpg --import key.asc
+          echo "KEYRING_PATH=$(realpath ./temp-keyring.gpg)" >> $GITHUB_ENV
 
       - name: Package chart with provenance
         run: |
           helm package $CHART_DIR \
             --sign \
-            --key ${{ env.GPG_KEY_ID }} \
-            --keyring $GNUPGHOME/pubring.kbx
+            --key "$GPG_KEY_ID" \
+            --keyring "$KEYRING_PATH"
 
       - name: Push chart to OCI
         run: |
