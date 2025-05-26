@@ -78,6 +78,13 @@ jobs:
       - name: Debug .cr-gpg
         run: ls -la .cr-gpg
 
+      - name: Prepare GPG keyring in expected location for releaser
+        run: |
+          mkdir -p ~/.gnupg
+          cp .cr-gpg/secring.gpg ~/.gnupg/secring.gpg
+          cp .cr-gpg/pubring.gpg ~/.gnupg/pubring.gpg
+
+
       - name: Move .cr-gpg and Chart.yaml to templates
         run: |
           cp -rf .cr-gpg "$CHART_DIR/templates"
