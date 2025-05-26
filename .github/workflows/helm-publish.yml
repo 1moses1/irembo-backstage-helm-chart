@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
-      id-token: write
+      # packages: write
+      # id-token: write
 
     env:
       GPG_NAME: "1moses1"
