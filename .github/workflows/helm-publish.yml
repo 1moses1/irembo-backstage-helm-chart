@@ -52,8 +52,14 @@ jobs:
 
       - name: Update Chart Version from Tag
         run: |
-          VERSION=${{ github.ref }}
-          yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "Setting version to $VERSION"
+            yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
+          else
+            echo "Skipping Chart version update; not a tag push."
+          fi
+
 
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
