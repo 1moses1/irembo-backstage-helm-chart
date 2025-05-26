@@ -105,6 +105,10 @@ jobs:
           cd charts
           ls -la
 
+      - name: Check current working directory
+        run: |
+          pwd
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.7.0
         with:
