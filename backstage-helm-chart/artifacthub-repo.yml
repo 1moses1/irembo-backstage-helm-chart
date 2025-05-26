@@ -1,4 +1,9 @@
-repositoryID: "1f27f03e-d517-49cb-852b-dce5d4b5e9fe"   # Using the actual repository ID from Artifact Hub
+repositoryID: "" 
 owners:
   - name: 1moses1
     email: iradukundam47@gmail.com
+name: irembo-backstage-helm-chart
+displayName: Irembo Backstage Helm Chart
+description: Production-ready Helm chart for deploying Backstage
+type: helm
+url: https://1moses1.github.io/irembo-backstage-helm-chart
