@@ -1,16 +1,9 @@
 name: Release Helm Chart with chart-releaser
 
-# on:
-#   workflow_dispatch:
-#   release:
-#     types: [published]
-
 on:
-  push:
-    tags:
-      - 'v.*'
-    branches:
-      - main
+  workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   release-chart:
