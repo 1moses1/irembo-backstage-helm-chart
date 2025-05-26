@@ -54,8 +54,10 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
-            echo "Setting version to $VERSION"
-            yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
+            # Remove any prefixes like "backstage-" to ensure valid SemVer format
+            CLEAN_VERSION=$(echo "$VERSION" | sed -E 's/^backstage-//')
+            echo "Setting version to $CLEAN_VERSION"
+            yq eval ".version = \"$CLEAN_VERSION\"" -i "$CHART_DIR/Chart.yaml"
           else
             echo "Skipping Chart version update; not a tag push."
           fi
