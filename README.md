@@ -87,23 +87,50 @@ cp plugin.yaml ~/.helm/plugins/backstage/
 helm backstage-health backstage irembo
 ```
 
-## Chart Signing
+# Chart Signing & Provenance
 
-The chart can be signed for security and integrity verification. Generate a PGP key:
+This Helm chart is signed and includes a `.prov` file for verifying its authenticity.
+
+## Verifying the Chart
+
+To verify the chart before installation:
 
 ```bash
-gpg --gen-key
+# Add and update the repository
+helm repo add irembo-backstage-helm https://1moses1.github.io/irembo-backstage-helm-chart/
+helm repo update
+
+# Download the chart and provenance file
+helm pull irembo-backstage-helm/backstage --version 0.1.1 --verify
 ```
 
-Sign the chart:
+🔐 This will check the `.prov` file against the embedded GPG signature used during release.
+
+The `.tgz` and `.prov` files are also available on the GitHub Releases page.
+
+## Installation
+
+After verification, install the chart:
 
 ```bash
-helm package .
-helm gpg sign backstage-0.1.0.tgz
+# Install the chart
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1
+
+# Or upgrade if already installed
+helm upgrade my-backstage irembo-backstage-helm/backstage --version 0.1.1
 ```
 
-Verify the chart:
+You can also customize the installation with a values file:
 
 ```bash
-helm gpg verify backstage-0.1.0.tgz
+# Install with custom values
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1 -f values.yaml
+
+# Or set individual values
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1 --set key=value
+```
+
+## Provenance on Artifact Hub
+
+Artifact Hub will show a provenance badge when the `.prov` file is detected. Visit: [Backstage Chart on Artifact Hub](https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage)
 ```
