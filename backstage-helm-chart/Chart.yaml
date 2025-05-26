@@ -2,7 +2,7 @@ apiVersion: v2
 name: backstage
 description: A Helm chart for Backstage application
 type: application
-version: 0.1.2
+version: 0.1.3
 appVersion: "1.0.0"
 home: https://github.com/1moses1/irembo-backstage-helm-chart
 maintainers:
