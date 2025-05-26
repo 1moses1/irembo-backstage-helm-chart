@@ -133,4 +133,3 @@ helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1 --set 
 ## Provenance on Artifact Hub
 
 Artifact Hub will show a provenance badge when the `.prov` file is detected. Visit: [Backstage Chart on Artifact Hub](https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage)
-```
