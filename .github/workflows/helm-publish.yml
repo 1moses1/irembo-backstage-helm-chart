@@ -50,10 +50,10 @@ jobs:
           tar -zxvf oras_${ORAS_VERSION}_linux_amd64.tar.gz
           sudo mv oras /usr/local/bin/oras
 
-      - name: Update Chart Version from Tag
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
+      # - name: Update Chart Version from Tag
+      #   run: |
+      #     VERSION=${GITHUB_REF#refs/tags/}
+      #     yq eval ".version = \"$VERSION\"" -i "$CHART_DIR/Chart.yaml"
 
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
