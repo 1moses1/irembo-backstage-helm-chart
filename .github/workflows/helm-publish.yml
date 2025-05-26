@@ -116,4 +116,5 @@ jobs:
           CR_TOKEN: "${{ secrets.PAT }}"
           CR_KEY: "${{ env.GPG_EMAIL }}"
           CR_SIGN: true
-          CR_SKIP_EXISTING: true
+          CR_SKIP_EXISTING: false
+          CR_MARK_AS_LATEST: true
