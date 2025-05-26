@@ -67,7 +67,7 @@ jobs:
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
           gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa4096 sign 1d
-          gpg --export -o "$GNUPGHOME/pubring.gpg"
+          gpg --export-secret-keys -o "$GNUPGHOME/pubring.gpg"
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
 
           # Copy to .cr-gpg for custom workflow needs
