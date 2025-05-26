@@ -136,8 +136,14 @@ jobs:
           git config --global user.name "${{ env.GPG_NAME }}"
           git config --global user.email "${{ env.GPG_EMAIL }}"
 
-          # Export the ephemeral public key
-          gpg --armor --export "${{ env.GPG_EMAIL }}" > public.asc
+          # Reuse the keyring path used earlier
+          GNUPGHOME="$(pwd)/.cr-gpg"
+
+          # Export the ephemeral public key correctly
+          gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > public.asc
+
+          # # Export the ephemeral public key
+          # gpg --armor --export "${{ env.GPG_EMAIL }}" > public.asc
 
           VERSION=${GITHUB_REF#refs/tags/}
           PUBLIC_KEY_NAME="public-${VERSION}.asc"
