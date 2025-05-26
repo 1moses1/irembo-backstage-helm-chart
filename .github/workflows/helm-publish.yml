@@ -98,12 +98,12 @@ jobs:
           cd "$CHART_DIR/templates"
           helm dependency update
 
-      - name: Copy all the files into charts directory
-        run: |
-          mkdir charts
-          cp -r backstage-helm-chart/* charts
-          cd charts
-          ls -la
+      # - name: Copy all the files into charts directory
+      #   run: |
+      #     mkdir charts
+      #     cp -r backstage-helm-chart/* charts
+      #     cd charts
+      #     ls -la
 
       - name: Check current working directory
         run: |
