@@ -22,7 +22,7 @@ jobs:
     env:
       GPG_NAME: "1moses1"
       GPG_EMAIL: "iradukundam47@gmail.com"
-      CHART_DIR: "backstage-helm-chart"
+      CHART_DIR: "charts"
       YQ_VERSION: "v4.40.5"
 
     steps:
