@@ -95,7 +95,7 @@ jobs:
 
       - name: Dependency update
         run: |
-          cd "$CHART_DIR/templates"
+          cd "$CHART_DIR"
           helm dependency update
 
       - name: Check current working directory
