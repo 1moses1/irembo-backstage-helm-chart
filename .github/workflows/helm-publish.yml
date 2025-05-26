@@ -81,12 +81,10 @@ jobs:
       - name: Move .cr-gpg and Chart.yaml to templates
         run: |
           cp -rf .cr-gpg "$CHART_DIR/templates"
-          cp "$CHART_DIR/Chart.yaml" "$CHART_DIR/templates"
-
+          #cp "$CHART_DIR/Chart.yaml" "$CHART_DIR/templates"
+        
       - name: Characteristics for .cr-gpg/secring.gpg
         run: |
-          file "$CHART_DIR/templates/.cr-gpg/secring.gpg"
-          wc .cr-gpg/secring.gpg
           wc "$CHART_DIR/templates/.cr-gpg/secring.gpg"
 
       - name: Auto-detect subchart repositories
@@ -117,8 +115,6 @@ jobs:
           CR_KEY: "${{ env.GPG_EMAIL }}"
           CR_SIGN: true
           # CR_SKIP_EXISTING: false
-          CR_MARK_AS_LATEST: true
-
-      - name: See what chart-releaser sees
-        run: |
-          cr package backstage-helm-chart
+      
+        
+          
