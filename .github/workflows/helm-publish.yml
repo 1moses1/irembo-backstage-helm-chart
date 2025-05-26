@@ -130,10 +130,15 @@ jobs:
           CR_SIGN: true
           CR_SKIP_EXISTING: true
 
-      - name: Push public.asc to main and gh-pages branches
+      - name: Archive and upload versioned public.asc key
+        if: github.event_name == 'release'
         run: |
           git config --global user.name "${{ env.GPG_NAME }}"
           git config --global user.email "${{ env.GPG_EMAIL }}"
+
+          VERSION=${GITHUB_REF#refs/tags/}
+          PUBLIC_KEY_NAME="public-${VERSION}.asc"
+          cp public.asc "$PUBLIC_KEY_NAME"
 
           # Clone repo with PAT for push access
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
@@ -141,14 +146,24 @@ jobs:
 
           # === Update main branch ===
           git checkout main
-          cp ../public.asc .
-          git add public.asc
-          git commit -m "chore: update public.asc for release ${{ github.ref_name }}" || echo "No changes to commit on main"
+          cp ../"$PUBLIC_KEY_NAME" .
+          git add "$PUBLIC_KEY_NAME"
+          git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on main"
           git push origin main
 
           # === Update gh-pages branch ===
           git checkout gh-pages
-          cp ../public.asc .
-          git add public.asc
-          git commit -m "chore: update public.asc for release ${{ github.ref_name }}" || echo "No changes to commit on gh-pages"
+          cp ../"$PUBLIC_KEY_NAME" .
+          git add "$PUBLIC_KEY_NAME"
+          git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on gh-pages"
           git push origin gh-pages
+
+        shell: bash
+
+      - name: Upload versioned public.asc to release assets
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'release'
+        with:
+          files: public-${{ github.ref_name }}.asc
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
