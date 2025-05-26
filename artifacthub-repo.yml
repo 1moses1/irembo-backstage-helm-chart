@@ -1,0 +1,9 @@
+repositoryID: "472182fe-20ee-4a17-a7c1-c20bcdad64b7" 
+owners:
+  - name: 1moses1
+    email: iradukundam47@gmail.com
+name: irembo-backstage-helm
+displayName: irembo-backstage-helm
+description: Production-ready Helm chart for deploying Backstage
+type: helm
+url: https://1moses1.github.io/irembo-backstage-helm-chart/
