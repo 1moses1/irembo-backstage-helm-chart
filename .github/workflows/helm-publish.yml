@@ -54,7 +54,6 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
-            # Remove any prefixes like "backstage-" to ensure valid SemVer format
             CLEAN_VERSION=$(echo "$VERSION" | sed -E 's/^backstage-//')
             echo "Setting version to $CLEAN_VERSION"
             yq eval ".version = \"$CLEAN_VERSION\"" -i "$CHART_DIR/Chart.yaml"
@@ -62,26 +61,29 @@ jobs:
             echo "Skipping Chart version update; not a tag push."
           fi
 
-
       - name: Auto-generate GPG Key and Prepare Environment
         id: gpg_setup
         run: |
           export GNUPGHOME="$(mktemp -d)"
           echo "GNUPGHOME_PATH=$GNUPGHOME" >> $GITHUB_OUTPUT
+          
           gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa4096 sign 1d
+
           gpg --export-secret-keys -o "$GNUPGHOME/pubring.gpg"
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
 
-          # Copy to .cr-gpg for custom workflow needs
           mkdir -p .cr-gpg
           cp "$GNUPGHOME/secring.gpg" .cr-gpg/secring.gpg
           cp "$GNUPGHOME/pubring.gpg" .cr-gpg/pubring.gpg
 
-          # Also prepare for chart-releaser by copying to ~/.gnupg
           mkdir -p ~/.gnupg
           cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg
           cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg
-          
+
+          # Export public key directly while GNUPGHOME is valid
+          VERSION=${GITHUB_REF#refs/tags/}
+          gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > "public-${VERSION}.asc"
+
         env:
           GPG_NAME: ${{ env.GPG_NAME }}
           GPG_EMAIL: ${{ env.GPG_EMAIL }}
@@ -92,17 +94,10 @@ jobs:
       - name: Move .cr-gpg and Chart.yaml to templates
         run: |
           cp -rf .cr-gpg "$CHART_DIR/templates"
-          #cp "$CHART_DIR/Chart.yaml" "$CHART_DIR/templates"
-        
+
       - name: Characteristics for .cr-gpg/secring.gpg
         run: |
           wc "$CHART_DIR/templates/.cr-gpg/secring.gpg"
-
-      # - name: Prepare GPG keyring in expected location for releaser
-      #   run: |
-      #     mkdir -p ~/.gnupg
-      #     cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg
-      #     cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg
 
       - name: Auto-detect subchart repositories
         run: |
@@ -123,33 +118,20 @@ jobs:
         uses: helm/chart-releaser-action@v1.7.0
         with:
           charts_dir: .
-          
         env:
           CR_TOKEN: "${{ secrets.PAT }}"
           CR_KEY: "${{ env.GPG_EMAIL }}"
           CR_SIGN: true
           CR_SKIP_EXISTING: true
 
-      - name: Archive and upload versioned public.asc key
+      - name: Archive and push public.asc to branches
         if: github.event_name == 'release'
         run: |
           git config --global user.name "${{ env.GPG_NAME }}"
           git config --global user.email "${{ env.GPG_EMAIL }}"
-
-          # Reuse the keyring path used earlier
-          GNUPGHOME="$(pwd)/.cr-gpg"
-
-          # Export the ephemeral public key correctly
-          gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > public.asc
-
-          # # Export the ephemeral public key
-          # gpg --armor --export "${{ env.GPG_EMAIL }}" > public.asc
-
           VERSION=${GITHUB_REF#refs/tags/}
           PUBLIC_KEY_NAME="public-${VERSION}.asc"
-          cp public.asc "$PUBLIC_KEY_NAME"
 
-          # Clone repo with PAT for push access
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
           cd repo
 
@@ -166,7 +148,6 @@ jobs:
           git add "$PUBLIC_KEY_NAME"
           git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on gh-pages"
           git push origin gh-pages
-
         shell: bash
 
       - name: Upload versioned public.asc to release assets
