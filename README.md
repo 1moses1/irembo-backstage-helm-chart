@@ -9,7 +9,7 @@ This Helm chart deploys [Backstage](https://backstage.io/) with PostgreSQL as a 
 - **Lifecycle Management**: Implements Helm hooks for proper application lifecycle
 - **GitOps Ready**: Designed to work with ArgoCD in a GitOps workflow
 - **Comprehensive Testing**: Includes test templates for quality assurance
-- **Chart Schema Validation**: Uses JSON Schema to validate chart values
+- **Chart Schema Validation**: Uses JSON Schema to validate chart values.
 
 ## Prerequisites
 
