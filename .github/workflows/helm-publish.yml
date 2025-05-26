@@ -69,8 +69,17 @@ jobs:
           gpg --batch --passphrase '' --quick-gen-key "${{ env.GPG_NAME }} <${{ env.GPG_EMAIL }}>" rsa4096 sign 1d
           gpg --export -o "$GNUPGHOME/pubring.gpg"
           gpg --export-secret-keys -o "$GNUPGHOME/secring.gpg"
+
+          # Copy to .cr-gpg for custom workflow needs
           mkdir -p .cr-gpg
           cp "$GNUPGHOME/secring.gpg" .cr-gpg/secring.gpg
+          cp "$GNUPGHOME/pubring.gpg" .cr-gpg/pubring.gpg
+
+          # Also prepare for chart-releaser by copying to ~/.gnupg
+          mkdir -p ~/.gnupg
+          cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg
+          cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg
+          
         env:
           GPG_NAME: ${{ env.GPG_NAME }}
           GPG_EMAIL: ${{ env.GPG_EMAIL }}
@@ -87,11 +96,11 @@ jobs:
         run: |
           wc "$CHART_DIR/templates/.cr-gpg/secring.gpg"
 
-      - name: Prepare GPG keyring in expected location for releaser
-        run: |
-          mkdir -p ~/.gnupg
-          cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg
-          cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg
+      # - name: Prepare GPG keyring in expected location for releaser
+      #   run: |
+      #     mkdir -p ~/.gnupg
+      #     cp "$GNUPGHOME/secring.gpg" ~/.gnupg/secring.gpg
+      #     cp "$GNUPGHOME/pubring.gpg" ~/.gnupg/pubring.gpg
 
       - name: Auto-detect subchart repositories
         run: |
