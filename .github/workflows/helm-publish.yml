@@ -7,7 +7,7 @@ name: Release Helm Chart with chart-releaser
 on:
   push:
     tags:
-      - 'v.*'
+      - 'v*'
     branches:
       - main
 
