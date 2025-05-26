@@ -129,3 +129,26 @@ jobs:
           CR_KEY: "${{ env.GPG_EMAIL }}"
           CR_SIGN: true
           CR_SKIP_EXISTING: true
+
+      - name: Push public.asc to main and gh-pages branches
+        run: |
+          git config --global user.name "${{ env.GPG_NAME }}"
+          git config --global user.email "${{ env.GPG_EMAIL }}"
+
+          # Clone repo with PAT for push access
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
+          cd repo
+
+          # === Update main branch ===
+          git checkout main
+          cp ../public.asc .
+          git add public.asc
+          git commit -m "chore: update public.asc for release ${{ github.ref_name }}" || echo "No changes to commit on main"
+          git push origin main
+
+          # === Update gh-pages branch ===
+          git checkout gh-pages
+          cp ../public.asc .
+          git add public.asc
+          git commit -m "chore: update public.asc for release ${{ github.ref_name }}" || echo "No changes to commit on gh-pages"
+          git push origin gh-pages
