@@ -87,49 +87,76 @@ cp plugin.yaml ~/.helm/plugins/backstage/
 helm backstage-health backstage irembo
 ```
 
+---
+
 # Chart Signing & Provenance
 
-This Helm chart is signed and includes a `.prov` file for verifying its authenticity.
+This Helm chart is cryptographically signed with a GPG key and includes a `.prov` file for provenance verification.
 
-## Verifying the Chart
+## 🔐 Verifying the Chart Signature
 
-To verify the chart before installation:
+To verify the chart before installation, follow these steps:
+
+### 1. Download the public GPG key
+Visit the [Releases](https://github.com/1moses1/irembo-backstage-helm-chart/releases) page and download the corresponding `public-key-<version>.asc` file for your chart release. Example:
 
 ```bash
-# Add and update the repository
+curl -LO https://github.com/1moses1/irembo-backstage-helm-chart/releases/download/backstage-v0.1.7/public-key-v0.1.7.asc
+````
+
+### 2. Import the public key into your GPG keyring
+
+```bash
+gpg --import public-key-v0.1.7.asc
+```
+
+### 3. Add and update the Helm repo
+
+```bash
 helm repo add irembo-backstage-helm https://1moses1.github.io/irembo-backstage-helm-chart/
 helm repo update
-
-# Download the chart and provenance file
-helm pull irembo-backstage-helm/backstage --version 0.1.1 --verify
 ```
 
-🔐 This will check the `.prov` file against the embedded GPG signature used during release.
-
-The `.tgz` and `.prov` files are also available on the GitHub Releases page.
-
-## Installation
-
-After verification, install the chart:
+### 4. Download the chart and verify
 
 ```bash
-# Install the chart
-helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1
-
-# Or upgrade if already installed
-helm upgrade my-backstage irembo-backstage-helm/backstage --version 0.1.1
+helm pull irembo-backstage-helm/backstage --version 0.1.7 --verify
 ```
 
-You can also customize the installation with a values file:
+This command checks the chart’s `.prov` file against the GPG signature and confirms the integrity and authenticity of the Helm release.
+
+> The `.tgz`, `.prov`, and `.asc` files are also available on the [GitHub Releases](https://github.com/1moses1/irembo-backstage-helm-chart/releases) page.
+
+---
+
+## 📦 Installing the Chart
+
+After successful verification, you can proceed to install the chart:
 
 ```bash
-# Install with custom values
-helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1 -f values.yaml
-
-# Or set individual values
-helm install my-backstage irembo-backstage-helm/backstage --version 0.1.1 --set key=value
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.7
 ```
 
-## Provenance on Artifact Hub
+To upgrade an existing release:
 
-Artifact Hub will show a provenance badge when the `.prov` file is detected. Visit: [Backstage Chart on Artifact Hub](https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage)
+```bash
+helm upgrade my-backstage irembo-backstage-helm/backstage --version 0.1.7
+```
+
+### Optional: Customize with values
+
+```bash
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.7 -f values.yaml
+
+# Or with specific values
+helm install my-backstage irembo-backstage-helm/backstage --version 0.1.7 --set key=value
+```
+
+---
+
+## 🔎 Provenance on Artifact Hub
+
+Once indexed, Artifact Hub will display a **Verified Provenance** badge for this chart version.
+View it here: [Backstage Chart on Artifact Hub](https://artifacthub.io/packages/helm/irembo-backstage-helm/backstage)
+
+```
