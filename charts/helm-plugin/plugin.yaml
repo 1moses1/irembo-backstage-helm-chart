@@ -8,7 +8,7 @@ description: |-
     - backstage-health: Check the health of a Backstage deployment
     
 ignoreFlags: false
-command: "$HELM_PLUGIN_DIR/backstage.sh"
+command: "$HELM_PLUGIN_DIR/helm-backstage-health"
 hooks:
   install: "cd $HELM_PLUGIN_DIR && chmod +x backstage.sh"
   update: "cd $HELM_PLUGIN_DIR && chmod +x backstage.sh"
