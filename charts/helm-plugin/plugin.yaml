@@ -10,5 +10,5 @@ description: |-
 ignoreFlags: false
 command: "$HELM_PLUGIN_DIR/helm-backstage-health"
 hooks:
-  install: "cd $HELM_PLUGIN_DIR && chmod +x backstage.sh"
-  update: "cd $HELM_PLUGIN_DIR && chmod +x backstage.sh"
+  install: "cd $HELM_PLUGIN_DIR && chmod +x helm-backstage-health"
+  update: "cd $HELM_PLUGIN_DIR && chmod +x helm-backstage-health"
