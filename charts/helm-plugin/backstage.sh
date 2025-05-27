@@ -22,7 +22,7 @@ fi
 
 # Set up port forwarding to the service
 echo "Setting up port forwarding to Backstage service..."
-kubectl port-forward -n $NAMESPACE service/$SERVICE_NAME 9191:80 &
+kubectl port-forward -n $NAMESPACE service/$SERVICE_NAME 9191:7000 &
 PORT_FORWARD_PID=$!
 
 # Give port forwarding time to establish
