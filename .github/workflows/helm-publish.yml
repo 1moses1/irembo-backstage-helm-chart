@@ -82,7 +82,7 @@ jobs:
 
           # Export public key directly while GNUPGHOME is valid
           VERSION=${GITHUB_REF#refs/tags/}
-          gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > "public-${VERSION}.asc"
+          gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > "public-key-${VERSION}.asc"
 
         env:
           GPG_NAME: ${{ env.GPG_NAME }}
@@ -130,7 +130,7 @@ jobs:
           git config --global user.name "${{ env.GPG_NAME }}"
           git config --global user.email "${{ env.GPG_EMAIL }}"
           VERSION=${GITHUB_REF#refs/tags/}
-          PUBLIC_KEY_NAME="public-${VERSION}.asc"
+          PUBLIC_KEY_NAME="public-key-${VERSION}.asc"
 
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
           cd repo
@@ -154,6 +154,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: github.event_name == 'release'
         with:
-          files: public-${{ github.ref_name }}.asc
+          files: public-key-${{ github.ref_name }}.asc
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
