@@ -82,6 +82,7 @@ jobs:
 
           # Export public key directly while GNUPGHOME is valid
           VERSION=${GITHUB_REF#refs/tags/}
+          PUBLIC_KEY_NAME="public-key-${VERSION}.asc"
           gpg --homedir "$GNUPGHOME" --armor --export "${{ env.GPG_EMAIL }}" > "public-key-${VERSION}.asc"
 
         env:
@@ -124,31 +125,31 @@ jobs:
           CR_SIGN: true
           CR_SKIP_EXISTING: true
 
-      - name: Archive and push public.asc to branches
-        if: github.event_name == 'release'
-        run: |
-          git config --global user.name "${{ env.GPG_NAME }}"
-          git config --global user.email "${{ env.GPG_EMAIL }}"
-          VERSION=${GITHUB_REF#refs/tags/}
-          PUBLIC_KEY_NAME="public-key-${VERSION}.asc"
+      # - name: Archive and push public.asc to branches
+      #   if: github.event_name == 'release'
+      #   run: |
+      #     git config --global user.name "${{ env.GPG_NAME }}"
+      #     git config --global user.email "${{ env.GPG_EMAIL }}"
+      #     VERSION=${GITHUB_REF#refs/tags/}
+      #     PUBLIC_KEY_NAME="public-key-${VERSION}.asc"
 
-          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
-          cd repo
+      #     git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }} repo
+      #     cd repo
 
-          # === Update main branch ===
-          git checkout main
-          cp ../"$PUBLIC_KEY_NAME" .
-          git add "$PUBLIC_KEY_NAME"
-          git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on main"
-          git push origin main
+      #     # === Update main branch ===
+      #     git checkout main
+      #     cp ../"$PUBLIC_KEY_NAME" .
+      #     git add "$PUBLIC_KEY_NAME"
+      #     git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on main"
+      #     git push origin main
 
-          # === Update gh-pages branch ===
-          git checkout gh-pages
-          cp ../"$PUBLIC_KEY_NAME" .
-          git add "$PUBLIC_KEY_NAME"
-          git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on gh-pages"
-          git push origin gh-pages
-        shell: bash
+      #     # === Update gh-pages branch ===
+      #     git checkout gh-pages
+      #     cp ../"$PUBLIC_KEY_NAME" .
+      #     git add "$PUBLIC_KEY_NAME"
+      #     git commit -m "chore: archive $PUBLIC_KEY_NAME for release $VERSION" || echo "No changes to commit on gh-pages"
+      #     git push origin gh-pages
+      #   shell: bash
 
       - name: Upload versioned public.asc to release assets
         uses: softprops/action-gh-release@v1
