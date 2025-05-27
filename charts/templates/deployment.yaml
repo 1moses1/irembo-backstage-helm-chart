@@ -42,7 +42,7 @@ spec:
           {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthcheck
               port: 7000
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -53,7 +53,7 @@ spec:
           {{- if .Values.probes.readiness.enabled }}
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthcheck
               port: 7000
             initialDelaySeconds: 10
             periodSeconds: 5
