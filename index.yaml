@@ -1,0 +1,26 @@
+apiVersion: v1
+entries:
+  backstage:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2025-06-03T15:01:22.449564888Z"
+    dependencies:
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      tags:
+      - database
+      - backstage-database
+      version: 12.1.5
+    description: A Helm chart for Backstage application
+    digest: 23f384c4690e07cf74d2c7b1cdcaa958e42e53e15113271f41205157cf8aeaae
+    home: https://github.com/1moses1/irembo-backstage-helm-chart
+    maintainers:
+    - email: m.iradukunda@irembo.com
+      name: Moise Iradukunda Ingabire
+    name: backstage
+    type: application
+    urls:
+    - https://github.com/1moses1/irembo-backstage-helm-chart/releases/download/backstage-v1.0.3/backstage-v1.0.3.tgz
+    version: v1.0.3
+generated: "2025-06-03T15:01:22.449572502Z"
