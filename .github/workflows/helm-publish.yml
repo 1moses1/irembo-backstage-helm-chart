@@ -106,6 +106,11 @@ jobs:
             helm dependency list "$dir" 2>/dev/null | tail +2 | head -n -1 | awk '{ print "helm repo add " $1 " " $3 }' | while read cmd; do $cmd; done
           done
 
+      - name: Add Bitnami Helm repo
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+          
       - name: Dependency update
         run: |
           cd "$CHART_DIR"
